@@ -14,7 +14,7 @@ Later, a different component can check the replay data against a ruleset for com
 
 ## Code Components
 **Main Application**: One Rust binary handling all components
-- **Speedrun.com submission Monitor**: Background task polling speedrun.com every 5-15 minutes
+- **Speedrun.com submission monitor**: Background task polling speedrun.com every 5-15 minutes
 - **Persistent Job Queue**: Database-backed queue that survives restarts
 - **Factorio Version Manager**: Manages and downloads new Factorio versions for replay execution
 - **Replay runner**: Installs replay scripts and runs Factorio replays. Also includes methods for extracting other replay data
@@ -26,7 +26,7 @@ Later, a different component can check the replay data against a ruleset for com
 
 ## Considerations
 
-- Version downloading should be able to happen concurrently with replay running. (Checking for replay version is a fast process).
+- Version downloading should be able to happen concurrently with replay running. .
 - Extracted replay data will be stored as simple json files on disk per replay.
 - Every job will have one database entry recording its progress. This allows for monitoring and queue recovery on startup.
 - Graceful shutdown
@@ -37,20 +37,6 @@ Every time a job moves stages/queues, a corresponding database entry is also upd
 
 There will be a system to manage the maximum amount of concurrent jobs/db space.
 A job here is defined from the moment it enters RunPreprocessor and exits ReplayRunner (or shortcuts to Done due to error).
-
-```mermaid
-flowchart TD
-    SpeedrunPoller[Speedrun.com Poller] -->|new submission| NewRunQueue([New run queue]) --> RunPreprocessor[Run Preprocessor]
-    RunPreprocessor --|annotated, run, ok|-->
-    PendingQueue([Pending queue])
-    RunPreprocessor --| early failure|-->Done
-    PendingQueue -->
-    VersionManager --|needs download|--> AwaitingQueue([Awaiting Download]) --|downloaded|--> VersionManager
-    VersionManager --|invalid version|-->Done
-    VersionManager --|version present|--> ReadyQueue([Ready to run])
-	-->  ReplayRunner --|error or cancel|--> PendingQueue
-    ReplayRunner --|finished|--> Done(Done, save results)
-```
 
 ## Components in detail
 
@@ -82,7 +68,6 @@ Produces "annotated replay" (+ another json file with run information.
 Manages Factorio installations.
 - Simple filesystem storage.
 - Tracks downloaded versions, and downloads in progress.
-- Queue for version downloads.
 - API to check for version availability
 - Manages versions, deletes versions older than 1 month.
 
