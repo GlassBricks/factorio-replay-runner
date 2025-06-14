@@ -16,10 +16,6 @@
         pkgs = nixpkgs.legacyPackages.${system};
         # Read the file relative to the flake's root
         overrides = builtins.fromTOML (builtins.readFile (self + "/rust-toolchain.toml"));
-        libPath = with pkgs;
-          lib.makeLibraryPath [
-            # load external libraries that you need in your rust project here
-          ];
       in {
         devShells.default = pkgs.mkShell rec {
           nativeBuildInputs = [pkgs.pkg-config];
