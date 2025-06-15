@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
@@ -49,22 +48,13 @@ impl FactorioInstallationFolder {
     pub fn new(path: impl Into<PathBuf>) -> Result<Self, String> {
         let path = path.into();
         if !path.exists() || !path.is_dir() {
-            return Err("Not a directory".to_string());
+            Err("Not a directory".to_string())
+        } else {
+            Ok(FactorioInstallationFolder { path })
         }
-        Ok(FactorioInstallationFolder { path })
     }
 
-    pub fn get_versions(&self) -> HashSet<VersionStr> {
-        self.path
-            .read_dir()
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
-            .map(|entry| entry.file_name().into_string().unwrap())
-            .filter_map(|e| VersionStr::try_from(e.as_str()).ok())
-            .collect()
-    }
-    pub async fn download_factorio(&self, version: VersionStr) -> Result<(), AnyErr> {
+    async fn download_factorio(&self, version: VersionStr) -> Result<(), AnyErr> {
         download_factorio(version, &self.path).await
     }
 }
@@ -95,6 +85,37 @@ async fn download_factorio(
     Ok(())
 }
 
+pub struct FactorioInstallation {
+    install_dir: PathBuf,
+}
+
+impl FactorioInstallation {
+    pub fn install_dir(&self) -> &Path {
+        &self.install_dir
+    }
+}
+
+impl FactorioInstallationFolder {
+    pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstallation> {
+        let path = self.path.join(version.to_string());
+        path.exists()
+            .then(|| FactorioInstallation { install_dir: path })
+    }
+
+    pub async fn get_or_download_factorio(
+        &self,
+        version: VersionStr,
+    ) -> Result<FactorioInstallation, AnyErr> {
+        if let Some(installation) = self.get_factorio(version) {
+            Ok(installation)
+        } else {
+            self.download_factorio(version).await?;
+            self.get_factorio(version)
+                .ok_or_else(|| "Failed to find factorio after download".into())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,18 +134,16 @@ mod tests {
     fn test_get_versions() -> Result<(), AnyErr> {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path();
-        let manager = FactorioInstallationFolder::new(path)?;
-        assert_eq!(manager.get_versions(), HashSet::new());
 
         create_dir(path.join("1.2.3"))?;
         create_dir(path.join("2.3.4"))?;
         create_dir(path.join("ignored"))?;
-        File::create(path.join("3.4.5"))?;
+        File::create(path.join("3.4.5"))?; // also ignored
 
-        assert_eq!(
-            manager.get_versions(),
-            HashSet::from([VersionStr(1, 2, 3), VersionStr(2, 3, 4)])
-        );
+        let folder = FactorioInstallationFolder::new(path)?;
+        assert!(folder.get_factorio(VersionStr(1, 2, 3)).is_some());
+        assert!(folder.get_factorio(VersionStr(2, 3, 4)).is_some());
+        assert!(!folder.get_factorio(VersionStr(3, 4, 5)).is_none());
 
         drop(temp_dir);
         Ok(())
