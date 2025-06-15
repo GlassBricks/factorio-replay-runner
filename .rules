@@ -1,0 +1,8 @@
+Use idiomatic Rust.
+This project does not use unsafe.
+
+Prefer functional style programming:
+- Prefer using iter() over for loops.
+- When using result and option, prefer combinators, such as map, and_then, or_else, ok_or_else, etc., over if statements and if let.
+
+Leverage Rust's type system and zero-cost abstractions/wrappers
