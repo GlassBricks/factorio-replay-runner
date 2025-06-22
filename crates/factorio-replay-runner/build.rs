@@ -13,9 +13,9 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
     let replay_script_dir = "replay-script";
 
-    println!("cargo:rerun-if-changed={}/*.ts", replay_script_dir);
-    println!("cargo:rerun-if-changed={}/package.json", replay_script_dir);
-    println!("cargo:rerun-if-changed={}/tsconfig.json", replay_script_dir);
+    println!("cargo:rerun-if-changed={replay_script_dir}/*.ts");
+    println!("cargo:rerun-if-changed={replay_script_dir}/package.json");
+    println!("cargo:rerun-if-changed={replay_script_dir}/tsconfig.json");
 
     try_cmd(
         Command::new("bun").arg("--version"),
@@ -64,8 +64,6 @@ fn main() {
             err
         );
     });
-
-    println!("Successfully generated lua_scripts.rs with REPLAY_SCRIPT_CONTROL_LUA constant");
 }
 
 fn get_delimiter(content: &str) -> String {
