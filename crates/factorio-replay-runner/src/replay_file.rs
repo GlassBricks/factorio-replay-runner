@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use itertools::Itertools;
 use std::{
     fs::File,
@@ -15,9 +16,10 @@ pub struct ReplayFile<F: Read + Seek> {
 }
 
 impl<F: Read + Seek> ReplayFile<F> {
-    pub fn new(file: F) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut zip = ZipArchive::new(file)?;
-        let save_name = find_save_name(&mut zip)?;
+    pub fn new(file: F) -> Result<Self> {
+        let mut zip = ZipArchive::new(file).context("Failed to open file as ZIP archive")?;
+        let save_name =
+            find_save_name(&mut zip).context("Failed to find save name in replay file")?;
         Ok(Self { zip, save_name })
     }
 
@@ -26,8 +28,8 @@ impl<F: Read + Seek> ReplayFile<F> {
     }
 }
 
-fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String, String> {
-    (0..zip.len())
+fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
+    let save_name = (0..zip.len())
         .into_iter()
         .filter_map(|i| zip.by_index_raw(i).ok().and_then(|f| f.enclosed_name()))
         .filter_map(|p| {
@@ -37,7 +39,9 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String, Str
         })
         .unique()
         .exactly_one()
-        .map_err(|f| format!("Expected one top level folder: {}", f))
+        .map_err(|f| anyhow::anyhow!("Expected exactly one top level folder, found: {}", f))?;
+
+    Ok(save_name)
 }
 
 impl<F: Read + Seek> ReplayFile<F> {
@@ -50,18 +54,19 @@ impl<F: Read + Seek> ReplayFile<F> {
             .by_name(&self.inner_file_path(path).to_string_lossy())
     }
 
-    fn get_inner_file_text(
-        &mut self,
-        path: impl AsRef<Path>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut file = self.get_inner_file(path)?;
+    fn get_inner_file_text(&mut self, path: impl AsRef<Path>) -> Result<String> {
+        let mut file = self
+            .get_inner_file(path)
+            .context("Failed to get inner file from replay archive")?;
         let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        file.read_to_string(&mut contents)
+            .context("Failed to read file contents as string")?;
         Ok(contents)
     }
 
-    pub fn control_lua_contents(&mut self) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn control_lua_contents(&mut self) -> Result<String> {
         self.get_inner_file_text("control.lua")
+            .context("Failed to get control.lua contents from replay file")
     }
 
     fn copy_files_to(
@@ -98,33 +103,39 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
 
-    fn create_test_zip(
-        files: &[(&str, &str)],
-    ) -> Result<NamedTempFile, Box<dyn std::error::Error>> {
-        let temp_file = NamedTempFile::new()?;
-        let mut zip = ZipWriter::new(temp_file.reopen()?);
+    fn create_test_zip(files: &[(&str, &str)]) -> Result<NamedTempFile> {
+        let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
+        let mut zip = ZipWriter::new(
+            temp_file
+                .reopen()
+                .context("Failed to reopen temporary file")?,
+        );
 
         for &(name, content) in files {
             if name.contains(".") {
-                zip.start_file(name, SimpleFileOptions::default())?;
-                zip.write_all(content.as_bytes())?;
+                zip.start_file(name, SimpleFileOptions::default())
+                    .context("Failed to start file in ZIP")?;
+                zip.write_all(content.as_bytes())
+                    .context("Failed to write file content to ZIP")?;
             } else {
-                zip.add_directory(name, SimpleFileOptions::default())?;
+                zip.add_directory(name, SimpleFileOptions::default())
+                    .context("Failed to add directory to ZIP")?;
             }
         }
 
-        zip.finish()?;
+        zip.finish().context("Failed to finalize ZIP file")?;
         Ok(temp_file)
     }
 
-    fn simple_test_zip(names: &[&str]) -> Result<NamedTempFile, Box<dyn std::error::Error>> {
+    fn simple_test_zip(names: &[&str]) -> Result<NamedTempFile> {
         let files = names.iter().map(|&name| (name, "test")).collect_vec();
         create_test_zip(&files)
     }
 
-    fn save_name_result(names: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
-        let mut zip = ZipArchive::new(simple_test_zip(names)?)?;
-        Ok(find_save_name(&mut zip)?)
+    fn save_name_result(names: &[&str]) -> Result<String> {
+        let temp_file = simple_test_zip(names)?;
+        let mut zip = ZipArchive::new(temp_file).context("Failed to open test ZIP file")?;
+        find_save_name(&mut zip)
     }
 
     #[test]
@@ -140,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_save_name_multiple_directories_error() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_find_save_name_multiple_directories_error() -> Result<()> {
         let save_name = save_name_result(&["save1/control.lua", "save2/level-init.dat"]);
         assert!(save_name.is_err());
         let save_name = save_name_result(&["file1.txt", "file2.txt"]);
@@ -148,7 +159,7 @@ mod tests {
         Ok(())
     }
 
-    fn mock_replay_file() -> Result<NamedTempFile, Box<dyn std::error::Error>> {
+    fn mock_replay_file() -> Result<NamedTempFile> {
         let files = vec![
             ("my-save/control.lua", "--mock ctrl lua contents"),
             ("my-save/level-init.dat", "test"),
@@ -157,11 +168,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_replay_file() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_mock_replay_file() -> Result<()> {
         let file = mock_replay_file()?;
-        let mut replay_file = ReplayFile::new(file)?;
+        let mut replay_file =
+            ReplayFile::new(file).context("Failed to create ReplayFile from mock file")?;
         assert_eq!(replay_file.save_name(), "my-save");
-        let ctrl_lua_contents = replay_file.control_lua_contents()?;
+        let ctrl_lua_contents = replay_file
+            .control_lua_contents()
+            .context("Failed to get control.lua contents")?;
         assert_eq!(ctrl_lua_contents, "--mock ctrl lua contents");
         Ok(())
     }

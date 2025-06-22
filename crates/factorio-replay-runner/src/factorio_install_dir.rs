@@ -1,8 +1,9 @@
+use anyhow::{Context, Result};
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
 use crate::factorio_installation::FactorioInstallation;
-use crate::utils::{AnyErr, try_download, try_extract};
+use crate::utils::{try_download, try_extract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VersionStr(u8, u8, u16);
@@ -46,52 +47,57 @@ pub struct FactorioInstallDir {
 }
 
 impl FactorioInstallDir {
-    pub fn new(path: impl Into<PathBuf>) -> Result<Self, AnyErr> {
+    pub fn new(path: impl Into<PathBuf>) -> Result<Self> {
         let path: PathBuf = path.into();
-        let path = path.canonicalize()?;
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path: {}", path.display()))?;
         if !path.exists() || !path.is_dir() {
-            Err("Not a directory".into())
-        } else {
-            Ok(FactorioInstallDir { path })
+            anyhow::bail!("Path is not a directory: {}", path.display());
         }
+        Ok(FactorioInstallDir { path })
     }
 
-    pub fn new_or_create(path: impl AsRef<Path>) -> Result<Self, AnyErr> {
-        let path = path.as_ref().canonicalize()?;
+    pub fn new_or_create(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
         if !path.exists() {
-            std::fs::create_dir_all(&path).map_err(|_| "Failed to create directory")?;
+            std::fs::create_dir_all(path)
+                .with_context(|| format!("Failed to create directory: {}", path.display()))?;
         }
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path: {}", path.display()))?;
         Self::new(path)
     }
 
-    async fn download_factorio(&self, version: VersionStr) -> Result<(), AnyErr> {
+    async fn download_factorio(&self, version: VersionStr) -> Result<()> {
         download_factorio(version, &self.path).await
     }
 }
 
-async fn download_factorio(
-    version: VersionStr,
-    out_folder: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()> {
     let url = format!(
         "https://factorio.com/get-download/{}/headless/linux64",
         version
     );
-    let zip_path = absolute(&out_folder.join(format!("factorio-{}.tar.xz", version)))?;
+    let zip_path = absolute(&out_folder.join(format!("factorio-{}.tar.xz", version)))
+        .with_context(|| "Failed to get absolute path for download file")?;
     println!(
         "Downloading Factorio version {} to {}",
         version,
         zip_path.display()
     );
     try_download(&url, &zip_path).await?;
-    let out_path = absolute(&out_folder.join(version.to_string()))?;
+    let out_path = absolute(&out_folder.join(version.to_string()))
+        .with_context(|| "Failed to get absolute path for extraction directory")?;
     println!(
         "Extracting {} to {}",
         zip_path.display(),
         out_path.display()
     );
     try_extract(&zip_path, &out_path).await?;
-    std::fs::remove_file(zip_path)?;
+    std::fs::remove_file(&zip_path)
+        .with_context(|| format!("Failed to remove downloaded file: {}", zip_path.display()))?;
     Ok(())
 }
 
@@ -106,13 +112,13 @@ impl FactorioInstallDir {
     pub async fn get_or_download_factorio(
         &self,
         version: VersionStr,
-    ) -> Result<FactorioInstallation, AnyErr> {
+    ) -> Result<FactorioInstallation> {
         if let Some(installation) = self.get_factorio(version) {
             Ok(installation)
         } else {
             self.download_factorio(version).await?;
             self.get_factorio(version)
-                .ok_or_else(|| "Failed to find factorio after download".into())
+                .ok_or_else(|| anyhow::anyhow!("Failed to find factorio after download"))
         }
     }
 }
@@ -138,7 +144,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_get_versions() -> Result<(), AnyErr> {
+    fn test_get_versions() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path();
 
@@ -163,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn test_download_factorio() -> Result<(), AnyErr> {
+    async fn test_download_factorio() -> Result<()> {
         // let temp_dir = TempDir::new()?.keep();
         let temp_dir = PathBuf::from("/tmp/factorio-replay-runner");
         fs::create_dir_all(&temp_dir)?;

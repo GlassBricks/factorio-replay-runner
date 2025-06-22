@@ -1,4 +1,4 @@
-use crate::utils::AnyErr;
+use anyhow::{Context, Result};
 use async_process::Command;
 use std::path::{Path, PathBuf};
 
@@ -7,8 +7,13 @@ pub struct FactorioInstallation {
 }
 
 impl FactorioInstallation {
-    pub fn new(install_dir: PathBuf) -> Result<Self, AnyErr> {
-        let install_dir_abs = install_dir.canonicalize()?;
+    pub fn new(install_dir: PathBuf) -> Result<Self> {
+        let install_dir_abs = install_dir.canonicalize().with_context(|| {
+            format!(
+                "Failed to canonicalize install directory: {}",
+                install_dir.display()
+            )
+        })?;
         Ok(FactorioInstallation { install_dir_abs })
     }
 
@@ -21,7 +26,7 @@ impl FactorioInstallation {
         &self.install_dir_abs
     }
 
-    pub fn new_run_command(&self) -> Command {
+    pub(crate) fn new_run_command(&self) -> Command {
         let path = self.install_dir_abs.join("bin/x64/factorio");
         Command::new(path)
     }
@@ -33,7 +38,7 @@ mod tests {
     use crate::factorio_install_dir::FactorioInstallDir;
 
     #[tokio::test]
-    async fn test_run() -> Result<(), AnyErr> {
+    async fn test_run() -> Result<()> {
         let factorio = FactorioInstallDir::test_dir()
             .get_or_download_factorio("2.0.45".try_into().unwrap())
             .await?;
@@ -41,8 +46,13 @@ mod tests {
             .new_run_command()
             .args(["--version"])
             .status()
-            .await?;
-        assert!(result.success());
+            .await
+            .context("Failed to execute factorio command")?;
+        anyhow::ensure!(
+            result.success(),
+            "Factorio command failed with status: {}",
+            result
+        );
         Ok(())
     }
 }
