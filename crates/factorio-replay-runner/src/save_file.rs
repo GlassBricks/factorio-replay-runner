@@ -8,18 +8,18 @@ use std::{
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::SimpleFileOptions};
 
 /**
- * Utils for handling replay files.
+ * Utils for handling save files.
  */
-pub struct ReplayFile<F: Read + Seek> {
+pub struct SaveFile<F: Read + Seek> {
     zip: ZipArchive<F>,
     save_name: String,
 }
 
-impl<F: Read + Seek> ReplayFile<F> {
+impl<F: Read + Seek> SaveFile<F> {
     pub fn new(file: F) -> Result<Self> {
         let mut zip = ZipArchive::new(file).context("Failed to open file as ZIP archive")?;
         let save_name =
-            find_save_name(&mut zip).context("Failed to find save name in replay file")?;
+            find_save_name(&mut zip).context("Failed to find save name in save file")?;
         Ok(Self { zip, save_name })
     }
 
@@ -42,10 +42,10 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
         .map_err(|mut err| {
             let names = err.join(", ");
             if names.is_empty() {
-                anyhow::anyhow!("Failed to find save name in replay file: no folder found")
+                anyhow::anyhow!("Failed to find save name in save file: no folder found")
             } else {
                 anyhow::anyhow!(
-                    "Failed to find save name in replay file, multiple folders found: {}",
+                    "Failed to find save name in save file, multiple folders found: {}",
                     names
                 )
             }
@@ -54,7 +54,7 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
     Ok(save_name)
 }
 
-impl<F: Read + Seek> ReplayFile<F> {
+impl<F: Read + Seek> SaveFile<F> {
     fn inner_file_path(&self, path: impl AsRef<Path>) -> PathBuf {
         Path::new(&self.save_name).join(path)
     }
@@ -67,7 +67,7 @@ impl<F: Read + Seek> ReplayFile<F> {
     fn get_inner_file_text(&mut self, path: impl AsRef<Path>) -> Result<String> {
         let mut file = self
             .get_inner_file(path)
-            .context("Failed to get inner file from replay archive")?;
+            .context("Failed to get inner file from save archive")?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)
             .context("Failed to read file contents as string")?;
@@ -76,7 +76,7 @@ impl<F: Read + Seek> ReplayFile<F> {
 
     pub fn control_lua_contents(&mut self) -> Result<String> {
         self.get_inner_file_text("control.lua")
-            .context("Failed to get control.lua contents from replay file")
+            .context("Failed to get control.lua contents from save file")
     }
 
     fn copy_files_to(
@@ -95,7 +95,7 @@ impl<F: Read + Seek> ReplayFile<F> {
         Ok(())
     }
 
-    pub(crate) fn write_with_replay_script_to(
+    pub(crate) fn write_with_modified_control_to(
         &mut self,
         out: &mut File,
         new_ctrl_lua: &str,
@@ -174,7 +174,7 @@ mod tests {
         Ok(())
     }
 
-    fn mock_replay_file() -> Result<NamedTempFile> {
+    fn mock_save_file() -> Result<NamedTempFile> {
         let files = vec![
             ("my-save/control.lua", "--mock ctrl lua contents"),
             ("my-save/level-init.dat", "test"),
@@ -183,31 +183,31 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_replay_file() -> Result<()> {
-        let file = mock_replay_file()?;
-        let mut replay_file =
-            ReplayFile::new(file).context("Failed to create ReplayFile from mock file")?;
-        assert_eq!(replay_file.save_name(), "my-save");
-        let ctrl_lua_contents = replay_file
+    fn test_mock_save_file() -> Result<()> {
+        let file = mock_save_file()?;
+        let mut save_file =
+            SaveFile::new(file).context("Failed to create SaveFile from mock file")?;
+        assert_eq!(save_file.save_name(), "my-save");
+        let ctrl_lua_contents = save_file
             .control_lua_contents()
             .context("Failed to get control.lua contents")?;
         assert_eq!(ctrl_lua_contents, "--mock ctrl lua contents");
         Ok(())
     }
 
-    impl ReplayFile<File> {
-        pub(crate) fn get_test_replay_file() -> Result<ReplayFile<File>> {
+    impl SaveFile<File> {
+        pub(crate) fn get_test_save_file() -> Result<SaveFile<File>> {
             let file = File::open("fixtures/TEST.zip")?;
-            let replay_file = ReplayFile::new(file)?;
-            Ok(replay_file)
+            let save_file = SaveFile::new(file)?;
+            Ok(save_file)
         }
     }
 
     #[test]
     fn test_get_fixture() -> Result<()> {
-        let mut replay_file = ReplayFile::get_test_replay_file()?;
-        assert_eq!(replay_file.save_name(), "TEST");
-        let ctrl_lua_contents = replay_file.control_lua_contents()?;
+        let mut save_file = SaveFile::get_test_save_file()?;
+        assert_eq!(save_file.save_name(), "TEST");
+        let ctrl_lua_contents = save_file.control_lua_contents()?;
 
         assert_eq!(
             ctrl_lua_contents,

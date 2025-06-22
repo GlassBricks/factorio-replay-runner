@@ -7,7 +7,7 @@ use std::{
     process::Stdio,
 };
 
-use crate::replay_file::ReplayFile;
+use crate::save_file::SaveFile;
 
 pub struct FactorioInstallation {
     install_dir_abs: PathBuf,
@@ -40,10 +40,10 @@ impl FactorioInstallation {
         Ok(File::create(saves_path)?)
     }
 
-    pub fn read_save_file(&self, file_name: &str) -> Result<ReplayFile<File>> {
+    pub fn read_save_file(&self, file_name: &str) -> Result<SaveFile<File>> {
         let saves_path = self.install_dir_abs.join("saves").join(file_name);
         let file = File::open(saves_path)?;
-        Ok(ReplayFile::new(file)?)
+        Ok(SaveFile::new(file)?)
     }
 
     pub fn new_run_command(&self) -> Command {
