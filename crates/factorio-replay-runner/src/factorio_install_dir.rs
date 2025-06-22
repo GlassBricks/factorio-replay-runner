@@ -104,7 +104,6 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()>
 impl FactorioInstallDir {
     pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstallation> {
         let path = self.path.join(version.to_string()).join("factorio");
-        dbg!(&path, path.exists());
         path.exists()
             .then(|| FactorioInstallation::new_canonical(path))
     }
@@ -157,7 +156,6 @@ mod tests {
         File::create(path.join("4.5.6"))?; // also ignored
 
         let folder = FactorioInstallDir::new(path)?;
-        dbg!(path.exists());
         assert!(folder.get_factorio(VersionStr(1, 2, 3)).is_some());
         assert!(folder.get_factorio(VersionStr(2, 3, 4)).is_some());
         assert!(folder.get_factorio(VersionStr(3, 4, 5)).is_none());
