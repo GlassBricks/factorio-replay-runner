@@ -1,0 +1,15 @@
+{
+  "name": "replay-script",
+  "private": true,
+  "type": "module",
+  "files": ["out/*"],
+  "devDependencies": {
+    "lua-types": "^2.13.1",
+    "typed-factorio": "^3.16.0",
+    "typescript-to-lua": "^1.30.1",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "tstl"
+  }
+}
