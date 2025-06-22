@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::{factorio_installation::FactorioInstallation, replay_script, save_file::SaveFile};
 
 impl FactorioInstallation {
-    pub fn add_modified_save(&self, save_file: &mut SaveFile<impl Read + Seek>) -> Result<()> {
+    fn add_modified_save(&self, save_file: &mut SaveFile<impl Read + Seek>) -> Result<()> {
         let mut out_file = self
             .create_save_file(save_file.save_name())
             .context("Failed to create save file")?;
@@ -25,7 +25,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_add_modified_save() -> Result<()> {
-        let factorio_installation = FactorioInstallation::get_test_install().await;
+        let factorio_installation = FactorioInstallation::get_test_installation().await;
         let mut save_file = SaveFile::get_test_save_file()?;
         factorio_installation
             .add_modified_save(&mut save_file)

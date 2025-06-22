@@ -80,24 +80,17 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()>
         "https://factorio.com/get-download/{}/headless/linux64",
         version
     );
-    let zip_path = absolute(&out_folder.join(format!("factorio-{}.tar.xz", version)))
-        .with_context(|| "Failed to get absolute path for download file")?;
-    println!(
-        "Downloading Factorio version {} to {}",
-        version,
-        zip_path.display()
-    );
+    let zip_path = absolute(&out_folder.join(format!("factorio-{}.tar.xz", version)))?;
+    println!("Downloading Factorio {} to {}", version, zip_path.display());
     try_download(&url, &zip_path).await?;
-    let out_path = absolute(&out_folder.join(version.to_string()))
-        .with_context(|| "Failed to get absolute path for extraction directory")?;
+    let out_path = absolute(&out_folder.join(version.to_string()))?;
     println!(
         "Extracting {} to {}",
         zip_path.display(),
         out_path.display()
     );
     try_extract(&zip_path, &out_path).await?;
-    std::fs::remove_file(&zip_path)
-        .with_context(|| format!("Failed to remove downloaded file: {}", zip_path.display()))?;
+    let _ = std::fs::remove_file(&zip_path);
     Ok(())
 }
 

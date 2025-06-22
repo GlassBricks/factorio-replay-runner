@@ -2,9 +2,10 @@ use anyhow::{Context, Result};
 use async_process::{Child, Command};
 use async_std::io::{BufReader, prelude::*};
 use std::{
-    fs::{File, create_dir_all},
+    fs::{File, create_dir_all, remove_dir_all},
+    io,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Output, Stdio},
 };
 
 use crate::save_file::SaveFile;
@@ -33,7 +34,7 @@ impl FactorioInstallation {
         &self.install_dir_abs
     }
 
-    pub(crate) fn create_save_file(&self, file_name: &str) -> Result<File> {
+    pub fn create_save_file(&self, file_name: &str) -> Result<File> {
         let mut saves_path = self.install_dir_abs.join("saves");
         create_dir_all(&saves_path)?;
         saves_path.push(file_name);
@@ -44,6 +45,12 @@ impl FactorioInstallation {
         let saves_path = self.install_dir_abs.join("saves").join(file_name);
         let file = File::open(saves_path)?;
         Ok(SaveFile::new(file)?)
+    }
+
+    pub fn delete_saves_dir(&self) -> Result<()> {
+        let saves_path = self.install_dir_abs.join("saves");
+        remove_dir_all(&saves_path)?;
+        Ok(())
     }
 
     pub fn new_run_command(&self) -> Command {
@@ -83,7 +90,7 @@ impl Drop for FactorioProcess {
 }
 
 impl FactorioInstallation {
-    pub fn launch(&self, args: &[&str]) -> Result<FactorioProcess> {
+    pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess> {
         let child = self
             .new_run_command()
             .stdin(Stdio::null())
@@ -92,45 +99,41 @@ impl FactorioInstallation {
             .spawn()?;
         FactorioProcess::new(child)
     }
+
+    pub fn output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
+        self.new_run_command().args(args).output()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::factorio_install_dir::FactorioInstallDir;
+    use crate::{factorio_install_dir::FactorioInstallDir, save_file::TEST_VERSION};
 
     impl FactorioInstallation {
-        pub(crate) async fn get_test_install() -> FactorioInstallation {
+        pub(crate) async fn get_test_installation() -> FactorioInstallation {
             FactorioInstallDir::test_dir()
-                .get_or_download_factorio("2.0.45".try_into().unwrap())
+                .get_or_download_factorio(TEST_VERSION)
                 .await
                 .expect("Failed to install factorio")
         }
     }
 
     #[async_std::test]
-    async fn test_basic_run() -> Result<()> {
-        let factorio = FactorioInstallation::get_test_install().await;
-        let result = factorio
-            .new_run_command()
-            .args(["--version"])
-            .status()
-            .await
-            .context("Failed to execute factorio command")?;
-        anyhow::ensure!(
-            result.success(),
-            "Factorio command failed with status: {}",
-            result
-        );
+    async fn test_spawn() -> Result<()> {
+        let factorio = FactorioInstallation::get_test_installation().await;
+        let mut process = factorio.spawn(&["--version"])?;
+        let output = process.read_all().await?;
+        assert!(output.contains(&TEST_VERSION.to_string()));
         Ok(())
     }
 
     #[async_std::test]
-    async fn test_read_all() -> Result<()> {
-        let factorio = FactorioInstallation::get_test_install().await;
-        let mut process = factorio.launch(&["--version"])?;
-        let output = process.read_all().await?;
-        dbg!(output);
-        anyhow::Ok(())
+    async fn test_output() -> Result<()> {
+        let factorio = FactorioInstallation::get_test_installation().await;
+        let stderr = factorio.output(&["--version"]).await?.stdout;
+        let output = String::from_utf8(stderr)?;
+        assert!(output.contains(&TEST_VERSION.to_string()));
+        Ok(())
     }
 }

@@ -133,6 +133,9 @@ impl<F: Read + Seek> SaveFile<F> {
 }
 
 #[cfg(test)]
+pub(crate) const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 32);
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
@@ -185,8 +188,6 @@ mod tests {
         assert!(save_name.is_err());
         Ok(())
     }
-
-    const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 32);
 
     fn mock_save_file() -> Result<NamedTempFile> {
         let VersionStr(major, minor, patch) = TEST_VERSION;
