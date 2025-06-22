@@ -13,7 +13,8 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR environment variable not set");
     let replay_script_dir = "replay-script";
 
-    println!("cargo:rerun-if-changed={replay_script_dir}/*.ts");
+    println!("cargo:rerun-if-changed={replay_script_dir}/control.ts");
+    println!("cargo:rerun-if-changed={replay_script_dir}/event_handler.d.ts");
     println!("cargo:rerun-if-changed={replay_script_dir}/package.json");
     println!("cargo:rerun-if-changed={replay_script_dir}/tsconfig.json");
 
