@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use async_process::{Child, Command};
+use async_std::io::{BufReader, prelude::*};
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::io::{AsyncReadExt, BufReader};
 
 pub struct FactorioInstallation {
     install_dir_abs: PathBuf,
@@ -36,10 +36,9 @@ impl FactorioInstallation {
     }
 }
 
-type CompatChildStdout = tokio_util::compat::Compat<async_process::ChildStdout>;
 pub struct FactorioProcess {
     child: Child,
-    stdout_reader: BufReader<CompatChildStdout>,
+    stdout_reader: BufReader<async_process::ChildStdout>,
 }
 
 impl FactorioProcess {
@@ -48,8 +47,7 @@ impl FactorioProcess {
             anyhow::bail!("Child has no stdout");
         };
 
-        use tokio_util::compat::FuturesAsyncReadCompatExt;
-        let stdout_reader: BufReader<CompatChildStdout> = BufReader::new(std_out.compat());
+        let stdout_reader = BufReader::new(std_out);
 
         Ok(Self {
             child,
@@ -96,7 +94,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[async_std::test]
     async fn test_basic_run() -> Result<()> {
         let factorio = FactorioInstallation::test_installation().await;
         let result = factorio
@@ -113,7 +111,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[async_std::test]
     async fn test_read_all() -> Result<()> {
         let factorio = FactorioInstallation::test_installation().await;
         let mut process = factorio.launch(&["--version"])?;

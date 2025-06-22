@@ -165,7 +165,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[async_std::test]
     #[ignore]
     async fn test_download_factorio() -> Result<()> {
         // let temp_dir = TempDir::new()?.keep();
