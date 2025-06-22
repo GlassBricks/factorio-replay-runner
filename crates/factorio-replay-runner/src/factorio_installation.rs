@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
+use crate::factorio_runner::FactorioInstallation;
 use crate::utils::{AnyErr, try_download, try_extract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -40,18 +41,27 @@ impl Display for VersionStr {
     }
 }
 
-pub struct FactorioInstallationFolder {
+pub struct FactorioInstallDir {
     path: PathBuf,
 }
 
-impl FactorioInstallationFolder {
-    pub fn new(path: impl Into<PathBuf>) -> Result<Self, String> {
-        let path = path.into();
+impl FactorioInstallDir {
+    pub fn new(path: impl Into<PathBuf>) -> Result<Self, AnyErr> {
+        let path: PathBuf = path.into();
+        let path = path.canonicalize()?;
         if !path.exists() || !path.is_dir() {
-            Err("Not a directory".to_string())
+            Err("Not a directory".into())
         } else {
-            Ok(FactorioInstallationFolder { path })
+            Ok(FactorioInstallDir { path })
         }
+    }
+
+    pub fn new_or_create(path: impl AsRef<Path>) -> Result<Self, AnyErr> {
+        let path = path.as_ref().canonicalize()?;
+        if !path.exists() {
+            std::fs::create_dir_all(&path).map_err(|_| "Failed to create directory")?;
+        }
+        Self::new(path)
     }
 
     async fn download_factorio(&self, version: VersionStr) -> Result<(), AnyErr> {
@@ -85,21 +95,12 @@ async fn download_factorio(
     Ok(())
 }
 
-pub struct FactorioInstallation {
-    install_dir: PathBuf,
-}
-
-impl FactorioInstallation {
-    pub fn install_dir(&self) -> &Path {
-        &self.install_dir
-    }
-}
-
-impl FactorioInstallationFolder {
+impl FactorioInstallDir {
     pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstallation> {
-        let path = self.path.join(version.to_string());
+        let path = self.path.join(version.to_string()).join("factorio");
+        dbg!(&path, path.exists());
         path.exists()
-            .then(|| FactorioInstallation { install_dir: path })
+            .then(|| FactorioInstallation::new_canonical(path))
     }
 
     pub async fn get_or_download_factorio(
@@ -120,6 +121,12 @@ impl FactorioInstallationFolder {
 mod tests {
     use super::*;
 
+    impl FactorioInstallDir {
+        pub(crate) fn test_dir() -> Self {
+            Self::new_or_create("./testtmp").expect("Failed to create test directory")
+        }
+    }
+
     #[test]
     fn test_version_str() {
         let version = VersionStr::try_from("1.2.3").unwrap();
@@ -127,7 +134,7 @@ mod tests {
         assert_eq!(version, VersionStr(1, 2, 3))
     }
 
-    use std::fs::{self, File, create_dir};
+    use std::fs::{self, File, create_dir, create_dir_all};
     use tempfile::TempDir;
 
     #[test]
@@ -135,15 +142,20 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path();
 
-        create_dir(path.join("1.2.3"))?;
-        create_dir(path.join("2.3.4"))?;
-        create_dir(path.join("ignored"))?;
-        File::create(path.join("3.4.5"))?; // also ignored
+        let make_installation = |name: &str| create_dir_all(&path.join(name).join("factorio"));
 
-        let folder = FactorioInstallationFolder::new(path)?;
+        make_installation("1.2.3")?;
+        make_installation("2.3.4")?;
+        create_dir(path.join("ignored"))?;
+        create_dir(path.join("3.4.5"))?; // ignored, since no nested factorio folder
+        File::create(path.join("4.5.6"))?; // also ignored
+
+        let folder = FactorioInstallDir::new(path)?;
+        dbg!(path.exists());
         assert!(folder.get_factorio(VersionStr(1, 2, 3)).is_some());
         assert!(folder.get_factorio(VersionStr(2, 3, 4)).is_some());
-        assert!(!folder.get_factorio(VersionStr(3, 4, 5)).is_none());
+        assert!(folder.get_factorio(VersionStr(3, 4, 5)).is_none());
+        assert!(folder.get_factorio(VersionStr(4, 5, 6)).is_none());
 
         drop(temp_dir);
         Ok(())
