@@ -100,7 +100,7 @@ mod tests {
     use crate::factorio_install_dir::FactorioInstallDir;
 
     impl FactorioInstallation {
-        pub(crate) async fn test_installation() -> FactorioInstallation {
+        pub(crate) async fn get_test_install() -> FactorioInstallation {
             FactorioInstallDir::test_dir()
                 .get_or_download_factorio("2.0.45".try_into().unwrap())
                 .await
@@ -110,7 +110,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_basic_run() -> Result<()> {
-        let factorio = FactorioInstallation::test_installation().await;
+        let factorio = FactorioInstallation::get_test_install().await;
         let result = factorio
             .new_run_command()
             .args(["--version"])
@@ -127,7 +127,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_read_all() -> Result<()> {
-        let factorio = FactorioInstallation::test_installation().await;
+        let factorio = FactorioInstallation::get_test_install().await;
         let mut process = factorio.launch(&["--version"])?;
         let output = process.read_all().await?;
         dbg!(output);

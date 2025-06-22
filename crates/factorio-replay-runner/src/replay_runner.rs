@@ -25,7 +25,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_add_modified_save() -> Result<()> {
-        let factorio_installation = FactorioInstallation::test_installation().await;
+        let factorio_installation = FactorioInstallation::get_test_install().await;
         let mut save_file = SaveFile::get_test_save_file()?;
         factorio_installation
             .add_modified_save(&mut save_file)

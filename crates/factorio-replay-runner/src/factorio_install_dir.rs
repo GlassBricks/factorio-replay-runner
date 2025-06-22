@@ -6,10 +6,10 @@ use crate::factorio_installation::FactorioInstallation;
 use crate::utils::{try_download, try_extract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct VersionStr(u8, u8, u16);
+pub struct VersionStr(pub u16, pub u16, pub u16);
 
 impl VersionStr {
-    pub fn new(major: u8, minor: u8, patch: u16) -> Self {
+    pub const fn new(major: u16, minor: u16, patch: u16) -> Self {
         VersionStr(major, minor, patch)
     }
 }

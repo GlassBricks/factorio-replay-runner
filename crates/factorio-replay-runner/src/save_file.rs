@@ -7,6 +7,8 @@ use std::{
 };
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::SimpleFileOptions};
 
+use crate::factorio_install_dir::VersionStr;
+
 /**
  * Utils for handling save files.
  */
@@ -79,6 +81,23 @@ impl<F: Read + Seek> SaveFile<F> {
             .context("Failed to get control.lua contents from save file")
     }
 
+    pub fn get_factorio_version(&mut self) -> Result<VersionStr> {
+        let mut level_init_file = self
+            .get_inner_file("level-init.dat")
+            .context("Failed to get level-init.dat from save file")?;
+
+        let mut buffer = [0u8; 6];
+        level_init_file
+            .read_exact(&mut buffer)
+            .context("Failed to read version bytes from level-init.dat")?;
+
+        let major = u16::from_le_bytes([buffer[0], buffer[1]]);
+        let minor = u16::from_le_bytes([buffer[2], buffer[3]]);
+        let patch = u16::from_le_bytes([buffer[4], buffer[5]]);
+
+        Ok(VersionStr::new(major, minor, patch))
+    }
+
     fn copy_files_to(
         &mut self,
         out: &mut ZipWriter<impl Seek + Write>,
@@ -119,26 +138,19 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn create_test_zip(files: &[(&str, &str)]) -> Result<NamedTempFile> {
-        let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
-        let mut zip = ZipWriter::new(
-            temp_file
-                .reopen()
-                .context("Failed to reopen temporary file")?,
-        );
+        let temp_file = NamedTempFile::new()?;
+        let mut zip = ZipWriter::new(temp_file.reopen()?);
 
         for &(name, content) in files {
             if name.contains(".") {
-                zip.start_file(name, SimpleFileOptions::default())
-                    .context("Failed to start file in ZIP")?;
-                zip.write_all(content.as_bytes())
-                    .context("Failed to write file content to ZIP")?;
+                zip.start_file(name, SimpleFileOptions::default())?;
+                zip.write_all(content.as_bytes())?;
             } else {
-                zip.add_directory(name, SimpleFileOptions::default())
-                    .context("Failed to add directory to ZIP")?;
+                zip.add_directory(name, SimpleFileOptions::default())?;
             }
         }
 
-        zip.finish().context("Failed to finalize ZIP file")?;
+        zip.finish()?;
         Ok(temp_file)
     }
 
@@ -149,7 +161,7 @@ mod tests {
 
     fn save_name_result(names: &[&str]) -> Result<String> {
         let temp_file = simple_test_zip(names)?;
-        let mut zip = ZipArchive::new(temp_file).context("Failed to open test ZIP file")?;
+        let mut zip = ZipArchive::new(temp_file)?;
         find_save_name(&mut zip)
     }
 
@@ -174,10 +186,20 @@ mod tests {
         Ok(())
     }
 
+    const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 32);
+
     fn mock_save_file() -> Result<NamedTempFile> {
+        let VersionStr(major, minor, patch) = TEST_VERSION;
+        // Create version bytes in little-endian format
+        let mut version_bytes = Vec::new();
+        version_bytes.extend_from_slice(&(major as u16).to_le_bytes());
+        version_bytes.extend_from_slice(&(minor as u16).to_le_bytes());
+        version_bytes.extend_from_slice(&patch.to_le_bytes());
+
+        let version_data = String::from_utf8_lossy(&version_bytes).into_owned();
         let files = vec![
             ("my-save/control.lua", "--mock ctrl lua contents"),
-            ("my-save/level-init.dat", "test"),
+            ("my-save/level-init.dat", &version_data),
         ];
         create_test_zip(&files)
     }
@@ -192,6 +214,9 @@ mod tests {
             .control_lua_contents()
             .context("Failed to get control.lua contents")?;
         assert_eq!(ctrl_lua_contents, "--mock ctrl lua contents");
+
+        let version = save_file.get_factorio_version()?;
+        assert_eq!(version, TEST_VERSION);
         Ok(())
     }
 
@@ -213,6 +238,15 @@ mod tests {
             ctrl_lua_contents,
             "require('__base__/script/freeplay/control.lua')\n"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_factorio_version() -> Result<()> {
+        let mut save_file = SaveFile::get_test_save_file()?;
+        let version = save_file.get_factorio_version()?;
+        let expected = TEST_VERSION;
+        assert_eq!(version, expected);
         Ok(())
     }
 }
