@@ -39,7 +39,17 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
         })
         .unique()
         .exactly_one()
-        .map_err(|f| anyhow::anyhow!("Expected exactly one top level folder, found: {}", f))?;
+        .map_err(|mut err| {
+            let names = err.join(", ");
+            if names.is_empty() {
+                anyhow::anyhow!("Failed to find save name in replay file: no folder found")
+            } else {
+                anyhow::anyhow!(
+                    "Failed to find save name in replay file, multiple folders found: {}",
+                    names
+                )
+            }
+        })?;
 
     Ok(save_name)
 }
@@ -71,13 +81,13 @@ impl<F: Read + Seek> ReplayFile<F> {
 
     fn copy_files_to(
         &mut self,
-        out: &mut ZipWriter<File>,
-        exclude_files: &[&str],
+        out: &mut ZipWriter<impl Seek + Write>,
+        exclude_file: &str,
     ) -> ZipResult<()> {
         let zip = &mut self.zip;
         for i in 0..zip.len() {
             let entry = zip.by_index(i).unwrap();
-            if exclude_files.contains(&entry.name()) {
+            if entry.name() == exclude_file {
                 continue;
             }
             out.raw_copy_file(entry)?;
@@ -85,15 +95,20 @@ impl<F: Read + Seek> ReplayFile<F> {
         Ok(())
     }
 
-    /// Creates a new zip, but with control.lua replaced by the given contents
-    pub fn with_installed_replay_script(
+    pub(crate) fn write_with_replay_script_to(
         &mut self,
-        out: &mut ZipWriter<File>,
+        out: &mut File,
         new_ctrl_lua: &str,
     ) -> ZipResult<()> {
-        self.copy_files_to(out, &["control.lua"])?;
-        out.start_file("control.lua", SimpleFileOptions::default())?;
-        out.write_all(new_ctrl_lua.as_bytes())?;
+        let ctrl_lua_path = self
+            .inner_file_path("control.lua")
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let mut zip = ZipWriter::new(out);
+        self.copy_files_to(&mut zip, &ctrl_lua_path)?;
+        zip.start_file(ctrl_lua_path, SimpleFileOptions::default())?;
+        zip.write_all(new_ctrl_lua.as_bytes())?;
         Ok(())
     }
 }
@@ -180,5 +195,24 @@ mod tests {
         Ok(())
     }
 
-    //todo
+    impl ReplayFile<File> {
+        pub(crate) fn get_test_replay_file() -> Result<ReplayFile<File>> {
+            let file = File::open("fixtures/TEST.zip")?;
+            let replay_file = ReplayFile::new(file)?;
+            Ok(replay_file)
+        }
+    }
+
+    #[test]
+    fn test_get_fixture() -> Result<()> {
+        let mut replay_file = ReplayFile::get_test_replay_file()?;
+        assert_eq!(replay_file.save_name(), "TEST");
+        let ctrl_lua_contents = replay_file.control_lua_contents()?;
+
+        assert_eq!(
+            ctrl_lua_contents,
+            "require('__base__/script/freeplay/control.lua')\n"
+        );
+        Ok(())
+    }
 }

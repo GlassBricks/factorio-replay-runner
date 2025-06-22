@@ -2,9 +2,12 @@ use anyhow::{Context, Result};
 use async_process::{Child, Command};
 use async_std::io::{BufReader, prelude::*};
 use std::{
+    fs::{File, create_dir_all},
     path::{Path, PathBuf},
     process::Stdio,
 };
+
+use crate::replay_file::ReplayFile;
 
 pub struct FactorioInstallation {
     install_dir_abs: PathBuf,
@@ -30,6 +33,19 @@ impl FactorioInstallation {
         &self.install_dir_abs
     }
 
+    pub(crate) fn create_save_file(&self, file_name: &str) -> Result<File> {
+        let mut saves_path = self.install_dir_abs.join("saves");
+        create_dir_all(&saves_path)?;
+        saves_path.push(file_name);
+        Ok(File::create(saves_path)?)
+    }
+
+    pub fn read_save_file(&self, file_name: &str) -> Result<ReplayFile<File>> {
+        let saves_path = self.install_dir_abs.join("saves").join(file_name);
+        let file = File::open(saves_path)?;
+        Ok(ReplayFile::new(file)?)
+    }
+
     pub fn new_run_command(&self) -> Command {
         let path = self.install_dir_abs.join("bin/x64/factorio");
         Command::new(path)
@@ -46,9 +62,7 @@ impl FactorioProcess {
         let Some(std_out) = child.stdout.take() else {
             anyhow::bail!("Child has no stdout");
         };
-
         let stdout_reader = BufReader::new(std_out);
-
         Ok(Self {
             child,
             stdout_reader,
