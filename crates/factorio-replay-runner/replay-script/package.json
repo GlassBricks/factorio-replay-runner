@@ -2,7 +2,9 @@
   "name": "replay-script",
   "private": true,
   "type": "module",
-  "files": ["out/*"],
+  "files": [
+    "out/*"
+  ],
   "devDependencies": {
     "lua-types": "^2.13.1",
     "typed-factorio": "^3.16.0",
@@ -11,5 +13,8 @@
   },
   "scripts": {
     "build": "tstl"
+  },
+  "prettier": {
+    "semi": false
   }
 }

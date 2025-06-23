@@ -1,5 +1,4 @@
-// Include the generated Lua scripts
-include!(concat!(env!("OUT_DIR"), "/lua_scripts.rs"));
+pub const REPLAY_SCRIPT_CONTROL_LUA: &str = include_str!("../replay-script/control.lua");
 
 #[cfg(test)]
 mod tests {
