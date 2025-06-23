@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use itertools::Itertools;
 use std::{
     fs::File,
-    io::{Read, Seek, Write},
-    path::{Path, PathBuf},
+    io::{self, Read, Seek, Write},
+    path::Path,
 };
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::SimpleFileOptions};
 
@@ -15,14 +15,19 @@ use crate::factorio_install_dir::VersionStr;
 pub struct SaveFile<F: Read + Seek> {
     zip: ZipArchive<F>,
     save_name: String,
+    // for lazy loading
+    control_lua_contents: Option<String>,
 }
 
 impl<F: Read + Seek> SaveFile<F> {
     pub fn new(file: F) -> Result<Self> {
-        let mut zip = ZipArchive::new(file).context("Failed to open file as ZIP archive")?;
-        let save_name =
-            find_save_name(&mut zip).context("Failed to find save name in save file")?;
-        Ok(Self { zip, save_name })
+        let mut zip = ZipArchive::new(file)?;
+        let save_name = find_save_name(&mut zip)?;
+        Ok(Self {
+            zip,
+            save_name,
+            control_lua_contents: None,
+        })
     }
 
     pub fn save_name(&self) -> &str {
@@ -56,29 +61,33 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
     Ok(save_name)
 }
 
+fn read_to_new_string<R: Read>(mut reader: R) -> io::Result<String> {
+    let mut contents = String::new();
+    reader.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
 impl<F: Read + Seek> SaveFile<F> {
-    fn inner_file_path(&self, path: impl AsRef<Path>) -> PathBuf {
-        Path::new(&self.save_name).join(path)
+    fn inner_file_path(&self, path: impl AsRef<Path>) -> String {
+        Path::new(&self.save_name)
+            .join(path)
+            .to_string_lossy()
+            .into_owned()
     }
 
-    pub fn get_inner_file(&mut self, path: impl AsRef<Path>) -> ZipResult<ZipFile<F>> {
+    fn get_inner_file(&mut self, path: impl AsRef<Path>) -> Result<ZipFile<F>> {
+        let path = self.inner_file_path(path);
         self.zip
-            .by_name(&self.inner_file_path(path).to_string_lossy())
+            .by_name(&path)
+            .with_context(|| format!("{} not found in zip file", path))
     }
 
-    fn get_inner_file_text(&mut self, path: impl AsRef<Path>) -> Result<String> {
-        let mut file = self
-            .get_inner_file(path)
-            .context("Failed to get inner file from save archive")?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .context("Failed to read file contents as string")?;
-        Ok(contents)
-    }
-
-    pub fn control_lua_contents(&mut self) -> Result<String> {
-        self.get_inner_file_text("control.lua")
-            .context("Failed to get control.lua contents from save file")
+    pub fn get_control_lua_contents(&mut self) -> Result<&str> {
+        if self.control_lua_contents.is_none() {
+            let contents = read_to_new_string(self.get_inner_file("control.lua")?)?;
+            self.control_lua_contents = Some(contents);
+        }
+        Ok(self.control_lua_contents.as_ref().unwrap())
     }
 
     pub fn get_factorio_version(&mut self) -> Result<VersionStr> {
@@ -98,7 +107,7 @@ impl<F: Read + Seek> SaveFile<F> {
         Ok(VersionStr::new(major, minor, patch))
     }
 
-    fn copy_files_to(
+    fn copy_files_except(
         &mut self,
         out: &mut ZipWriter<impl Seek + Write>,
         exclude_file: &str,
@@ -114,20 +123,23 @@ impl<F: Read + Seek> SaveFile<F> {
         Ok(())
     }
 
-    pub(crate) fn write_with_modified_control_to(
+    pub(crate) fn install_replay_script_to(
         &mut self,
-        out: &mut File,
-        new_ctrl_lua: &str,
-    ) -> ZipResult<()> {
-        let ctrl_lua_path = self
-            .inner_file_path("control.lua")
-            .to_str()
-            .unwrap()
-            .to_owned();
-        let mut zip = ZipWriter::new(out);
-        self.copy_files_to(&mut zip, &ctrl_lua_path)?;
+        out_save_file: &mut File,
+        replay_script: &str,
+    ) -> Result<()> {
+        let ctrl_lua_path = self.inner_file_path("control.lua");
+        let ctrl_lua_contents = self.get_control_lua_contents()?.to_string();
+
+        let mut zip = ZipWriter::new(out_save_file);
+        self.copy_files_except(&mut zip, &ctrl_lua_path)?;
+
         zip.start_file(ctrl_lua_path, SimpleFileOptions::default())?;
-        zip.write_all(new_ctrl_lua.as_bytes())?;
+        zip.write_fmt(format_args!(
+            "{}\n-- Begin replay script\n",
+            ctrl_lua_contents
+        ))?;
+        zip.write_all(replay_script.as_bytes())?;
         Ok(())
     }
 }
@@ -211,9 +223,7 @@ mod tests {
         let mut save_file =
             SaveFile::new(file).context("Failed to create SaveFile from mock file")?;
         assert_eq!(save_file.save_name(), "my-save");
-        let ctrl_lua_contents = save_file
-            .control_lua_contents()
-            .context("Failed to get control.lua contents")?;
+        let ctrl_lua_contents = save_file.get_control_lua_contents()?;
         assert_eq!(ctrl_lua_contents, "--mock ctrl lua contents");
 
         let version = save_file.get_factorio_version()?;
@@ -233,7 +243,7 @@ mod tests {
     fn test_get_fixture() -> Result<()> {
         let mut save_file = SaveFile::get_test_save_file()?;
         assert_eq!(save_file.save_name(), "TEST");
-        let ctrl_lua_contents = save_file.control_lua_contents()?;
+        let ctrl_lua_contents = save_file.get_control_lua_contents()?;
 
         assert_eq!(
             ctrl_lua_contents,
