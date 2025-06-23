@@ -61,24 +61,27 @@ impl FactorioInstallation {
 
 pub struct FactorioProcess {
     child: Child,
-    stdout_reader: BufReader<async_process::ChildStdout>,
 }
 
 impl FactorioProcess {
-    pub fn new(mut child: Child) -> Result<Self> {
-        let Some(std_out) = child.stdout.take() else {
-            anyhow::bail!("Child has no stdout");
-        };
-        let stdout_reader = BufReader::new(std_out);
-        Ok(Self {
-            child,
-            stdout_reader,
-        })
+    pub fn new(child: Child) -> Self {
+        Self { child }
+    }
+
+    pub(crate) fn stdout_reader(&mut self) -> Result<BufReader<&mut async_process::ChildStdout>> {
+        self.child
+            .stdout
+            .as_mut()
+            .map(BufReader::new)
+            .ok_or_else(|| anyhow::anyhow!("Process has no stdout"))
     }
 
     pub async fn read_all(&mut self) -> Result<String> {
         let mut output = String::new();
-        self.stdout_reader.read_to_string(&mut output).await?;
+        self.stdout_reader()
+            .context("Process has no stdout")?
+            .read_to_string(&mut output)
+            .await?;
         Ok(output)
     }
 }
@@ -97,7 +100,8 @@ impl FactorioInstallation {
             .stdout(Stdio::piped())
             .args(args)
             .spawn()?;
-        FactorioProcess::new(child)
+
+        Ok(FactorioProcess { child })
     }
 
     pub fn output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
@@ -131,8 +135,8 @@ mod tests {
     #[async_std::test]
     async fn test_output() -> Result<()> {
         let factorio = FactorioInstallation::get_test_installation().await;
-        let stderr = factorio.output(&["--version"]).await?.stdout;
-        let output = String::from_utf8(stderr)?;
+        let stdout = factorio.output(&["--version"]).await?.stdout;
+        let output = String::from_utf8(stdout)?;
         assert!(output.contains(&TEST_VERSION.to_string()));
         Ok(())
     }
