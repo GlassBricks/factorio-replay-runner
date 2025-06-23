@@ -133,7 +133,7 @@ impl<F: Read + Seek> SaveFile<F> {
 }
 
 #[cfg(test)]
-pub(crate) const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 32);
+pub(crate) const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 57);
 
 #[cfg(test)]
 mod tests {
