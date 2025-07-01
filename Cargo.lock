@@ -292,7 +292,7 @@ dependencies = [
 name = "cli"
 version = "0.1.0"
 dependencies = [
- "factorio-replay-runner",
+ "replay-runner",
 ]
 
 [[package]]
@@ -428,19 +428,6 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener 5.4.0",
  "pin-project-lite",
-]
-
-[[package]]
-name = "factorio-replay-runner"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-process",
- "async-std",
- "futures",
- "itertools",
- "tempfile",
- "zip",
 ]
 
 [[package]]
@@ -842,6 +829,19 @@ name = "r-efi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
+
+[[package]]
+name = "replay-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-process",
+ "async-std",
+ "futures",
+ "itertools",
+ "tempfile",
+ "zip",
+]
 
 [[package]]
 name = "rustix"

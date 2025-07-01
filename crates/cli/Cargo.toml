@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-factorio-replay-runner = { path = "../factorio-replay-runner" }
+replay-runner = { path = "../replay-runner" }

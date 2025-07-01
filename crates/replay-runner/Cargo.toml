@@ -1,5 +1,5 @@
 [package]
-name = "factorio-replay-runner"
+name = "replay-runner"
 version = "0.1.0"
 edition = "2024"
 
