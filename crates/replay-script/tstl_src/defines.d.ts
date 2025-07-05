@@ -11,11 +11,8 @@ declare module "event_handler" {
   export interface EventLib {
     events?: Events
     on_nth_tick?: Record<number, (this: void, event: NthTickEventData) => void>
-
     on_init?(): void
-
     on_load?(): void
-
     on_configuration_changed?(data: ConfigurationChangedData): void
   }
 

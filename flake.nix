@@ -21,6 +21,7 @@
           nativeBuildInputs = [pkgs.pkg-config];
           buildInputs = with pkgs; [
             bun
+            lua5_2
             clang
             llvmPackages.bintools
             rustup

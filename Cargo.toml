@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = [ "crates/cli", "crates/replay-runner"]
+members = [ "crates/cli", "crates/replay-runner", "crates/replay-script"]

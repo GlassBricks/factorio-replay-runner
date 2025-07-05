@@ -1,1 +1,5 @@
-words = ["factorio"]
+words = [
+    "factorio",
+    "fns",
+    "tstl",
+]
