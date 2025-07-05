@@ -844,10 +844,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "rules"
+name = "replay-script"
 version = "0.1.0"
 dependencies = [
+ "replay-script-derive",
  "serde",
+]
+
+[[package]]
+name = "replay-script-derive"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 2.0.103",
 ]
 
 [[package]]
