@@ -7,7 +7,7 @@ addReplayLib({
         player?.name || "unknown",
         "opened",
         otherPlayer?.name || "unknown",
-        "player's GUI!"
+        "player's GUI!",
       )
     }
   },
