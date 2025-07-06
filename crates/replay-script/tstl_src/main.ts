@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-type MsgType = "error" | "warn" | "info"
+type MsgType = "Error" | "Warn" | "Info"
 function logEvent(type: MsgType, ...args: string[]): void {
   print(
     "REPLAY_SCRIPT_EVENT:",
@@ -38,13 +38,13 @@ function logEvent(type: MsgType, ...args: string[]): void {
 }
 ReplayLog = {
   err(...args: string[]): void {
-    logEvent("error", ...args)
+    logEvent("Error", ...args)
   },
   warn(...args: string[]): void {
-    logEvent("warn", ...args)
+    logEvent("Warn", ...args)
   },
   info(...args: string[]): void {
-    logEvent("info", ...args)
+    logEvent("Info", ...args)
   },
 }
 
