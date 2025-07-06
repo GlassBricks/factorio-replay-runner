@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
-use crate::factorio_installation::FactorioInstallation;
+use crate::factorio_instance::FactorioInstance;
 use crate::utils::{try_download, try_extract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -95,16 +95,12 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()>
 }
 
 impl FactorioInstallDir {
-    pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstallation> {
+    pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstance> {
         let path = self.path.join(version.to_string()).join("factorio");
-        path.exists()
-            .then(|| FactorioInstallation::new_canonical(path))
+        path.exists().then(|| FactorioInstance::new_canonical(path))
     }
 
-    pub async fn get_or_download_factorio(
-        &self,
-        version: VersionStr,
-    ) -> Result<FactorioInstallation> {
+    pub async fn get_or_download_factorio(&self, version: VersionStr) -> Result<FactorioInstance> {
         if let Some(installation) = self.get_factorio(version) {
             Ok(installation)
         } else {

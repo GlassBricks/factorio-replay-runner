@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use async_std::io::BufReadExt;
 
 use crate::{
-    factorio_installation::{FactorioInstallation, FactorioProcess},
+    factorio_instance::{FactorioInstance, FactorioProcess},
     save_file::SaveFile,
 };
 
@@ -41,7 +41,7 @@ impl FactorioProcess {
 }
 
 const DEFAULT_MSG_PREFIX: &str = "REPLAY_SCRIPT:";
-impl FactorioInstallation {
+impl FactorioInstance {
     fn add_save_with_installed_replay_script(
         &self,
         save_file: &mut SaveFile<impl Read + Seek>,

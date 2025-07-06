@@ -9,13 +9,9 @@ use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::Simple
 
 use crate::factorio_install_dir::VersionStr;
 
-/**
- * Utils for handling save files.
- */
 pub struct SaveFile<F: Read + Seek> {
     zip: ZipArchive<F>,
     save_name: String,
-    // for lazy loading
     control_lua_contents: Option<String>,
 }
 

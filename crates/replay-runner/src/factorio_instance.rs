@@ -10,11 +10,11 @@ use std::{
 
 use crate::save_file::SaveFile;
 
-pub struct FactorioInstallation {
+pub struct FactorioInstance {
     install_dir_abs: PathBuf,
 }
 
-impl FactorioInstallation {
+impl FactorioInstance {
     pub fn new(install_dir: PathBuf) -> Result<Self> {
         let install_dir_abs = install_dir.canonicalize().with_context(|| {
             format!(
@@ -22,12 +22,12 @@ impl FactorioInstallation {
                 install_dir.display()
             )
         })?;
-        Ok(FactorioInstallation { install_dir_abs })
+        Ok(FactorioInstance { install_dir_abs })
     }
 
     pub(crate) fn new_canonical(install_dir: PathBuf) -> Self {
         let install_dir_abs = install_dir.canonicalize().unwrap();
-        FactorioInstallation { install_dir_abs }
+        FactorioInstance { install_dir_abs }
     }
 
     pub fn install_dir(&self) -> &Path {
@@ -92,7 +92,7 @@ impl Drop for FactorioProcess {
     }
 }
 
-impl FactorioInstallation {
+impl FactorioInstance {
     pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess> {
         let child = self
             .new_run_command()
@@ -114,8 +114,8 @@ mod tests {
     use super::*;
     use crate::{factorio_install_dir::FactorioInstallDir, save_file::TEST_VERSION};
 
-    impl FactorioInstallation {
-        pub(crate) async fn get_test_installation() -> FactorioInstallation {
+    impl FactorioInstance {
+        pub(crate) async fn get_test_installation() -> FactorioInstance {
             FactorioInstallDir::test_dir()
                 .get_or_download_factorio(TEST_VERSION)
                 .await
@@ -125,7 +125,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_spawn() -> Result<()> {
-        let factorio = FactorioInstallation::get_test_installation().await;
+        let factorio = FactorioInstance::get_test_installation().await;
         let mut process = factorio.spawn(&["--version"])?;
         let output = process.read_all().await?;
         assert!(output.contains(&TEST_VERSION.to_string()));
@@ -134,7 +134,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_output() -> Result<()> {
-        let factorio = FactorioInstallation::get_test_installation().await;
+        let factorio = FactorioInstance::get_test_installation().await;
         let stdout = factorio.output(&["--version"]).await?.stdout;
         let output = String::from_utf8(stdout)?;
         assert!(output.contains(&TEST_VERSION.to_string()));
