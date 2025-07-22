@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::fmt::Display;
-use std::path::{Path, PathBuf, absolute};
+use std::path::{absolute, Path, PathBuf};
 
 use crate::factorio_instance::FactorioInstance;
 use crate::utils::{try_download, try_extract};
@@ -80,10 +80,10 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()>
         "https://factorio.com/get-download/{}/headless/linux64",
         version
     );
-    let zip_path = absolute(&out_folder.join(format!("factorio-{}.tar.xz", version)))?;
+    let zip_path = absolute(out_folder.join(format!("factorio-{}.tar.xz", version)))?;
     println!("Downloading Factorio {} to {}", version, zip_path.display());
     try_download(&url, &zip_path).await?;
-    let out_path = absolute(&out_folder.join(version.to_string()))?;
+    let out_path = absolute(out_folder.join(version.to_string()))?;
     println!(
         "Extracting {} to {}",
         zip_path.display(),
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(version, VersionStr(1, 2, 3))
     }
 
-    use std::fs::{self, File, create_dir, create_dir_all};
+    use std::fs::{create_dir, create_dir_all, File};
     use tempfile::TempDir;
 
     #[test]
@@ -136,7 +136,7 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path();
 
-        let make_installation = |name: &str| create_dir_all(&path.join(name).join("factorio"));
+        let make_installation = |name: &str| create_dir_all(path.join(name).join("factorio"));
 
         make_installation("1.2.3")?;
         make_installation("2.3.4")?;
@@ -151,18 +151,6 @@ mod tests {
         assert!(folder.get_factorio(VersionStr(4, 5, 6)).is_none());
 
         drop(temp_dir);
-        Ok(())
-    }
-
-    #[async_std::test]
-    #[ignore]
-    async fn test_download_factorio() -> Result<()> {
-        // let temp_dir = TempDir::new()?.keep();
-        let temp_dir = PathBuf::from("/tmp/factorio-replay-runner");
-        fs::create_dir_all(&temp_dir)?;
-        println!("Temp dir: {:?}", temp_dir);
-        let version = VersionStr(2, 0, 53);
-        download_factorio(version, &temp_dir).await?;
         Ok(())
     }
 }

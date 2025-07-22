@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, str::FromStr};
 use strum::{Display, EnumString, VariantArray};
 
 macro_rules! generate_replay_scripts {
@@ -38,10 +38,10 @@ pub struct ReplayMsg {
 
 pub const REPLAY_SCRIPT_EVENT_PREFIX: &str = "REPLAY_SCRIPT_EVENT:";
 
-impl TryFrom<&str> for ReplayMsg {
-    type Error = ();
+impl FromStr for ReplayMsg {
+    type Err = ();
 
-    fn try_from(value: &str) -> Result<Self, ()> {
+    fn from_str(value: &str) -> Result<Self, ()> {
         let parts: Vec<&str> = value.split('\t').collect();
         if parts.len() != 4 || parts[0] != REPLAY_SCRIPT_EVENT_PREFIX {
             return Err(());
@@ -56,9 +56,8 @@ impl TryFrom<&str> for ReplayMsg {
 
 #[cfg(test)]
 mod tests {
-    use itertools::iproduct;
-
     use super::*;
+    use itertools::iproduct;
 
     #[test]
     fn test_write_replay_scripts() {
@@ -80,7 +79,7 @@ mod tests {
         for (&msg_type, time, msg) in
             iproduct!(MsgType::VARIANTS, [1234, 2345], ["message1", "message2"])
         {
-            let formatted = ReplayMsg::try_from(
+            let formatted = ReplayMsg::from_str(
                 format!(
                     "{REPLAY_SCRIPT_EVENT_PREFIX}\t{}\t{}\t{}",
                     msg_type, time, msg

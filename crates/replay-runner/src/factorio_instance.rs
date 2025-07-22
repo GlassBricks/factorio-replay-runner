@@ -1,14 +1,13 @@
+use crate::save_file::SaveFile;
 use anyhow::{Context, Result};
 use async_process::{Child, Command};
-use async_std::io::{BufReader, prelude::*};
+use async_std::io::{BufReader, ReadExt};
+use std::io;
+use std::process::{Output, Stdio};
 use std::{
     fs::{File, create_dir_all, remove_dir_all},
-    io,
     path::{Path, PathBuf},
-    process::{Output, Stdio},
 };
-
-use crate::save_file::SaveFile;
 
 pub struct FactorioInstance {
     install_dir_abs: PathBuf,
@@ -44,7 +43,7 @@ impl FactorioInstance {
     pub fn read_save_file(&self, file_name: &str) -> Result<SaveFile<File>> {
         let saves_path = self.install_dir_abs.join("saves").join(file_name);
         let file = File::open(saves_path)?;
-        Ok(SaveFile::new(file)?)
+        SaveFile::new(file)
     }
 
     pub fn delete_saves_dir(&self) -> Result<()> {
@@ -57,6 +56,21 @@ impl FactorioInstance {
         let path = self.install_dir_abs.join("bin/x64/factorio");
         Command::new(path)
     }
+
+    pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess> {
+        let child = self
+            .new_run_command()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .args(args)
+            .spawn()?;
+
+        Ok(FactorioProcess::new(child))
+    }
+
+    pub fn output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
+        self.new_run_command().args(args).output()
+    }
 }
 
 pub struct FactorioProcess {
@@ -65,10 +79,9 @@ pub struct FactorioProcess {
 
 impl FactorioProcess {
     pub fn new(child: Child) -> Self {
-        Self { child }
+        FactorioProcess { child }
     }
-
-    pub(crate) fn stdout_reader(&mut self) -> Result<BufReader<&mut async_process::ChildStdout>> {
+    pub fn stdout_reader(&mut self) -> Result<BufReader<&mut async_process::ChildStdout>> {
         self.child
             .stdout
             .as_mut()
@@ -89,23 +102,6 @@ impl FactorioProcess {
 impl Drop for FactorioProcess {
     fn drop(&mut self) {
         self.child.kill().ok();
-    }
-}
-
-impl FactorioInstance {
-    pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess> {
-        let child = self
-            .new_run_command()
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .args(args)
-            .spawn()?;
-
-        Ok(FactorioProcess { child })
-    }
-
-    pub fn output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
-        self.new_run_command().args(args).output()
     }
 }
 
