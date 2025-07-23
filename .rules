@@ -1,11 +1,10 @@
-## Overview
 This is a rust project broken into multiple crates.
 
-### replay-script crate
+## replay-script crate
 This crate contains a tstl (TypescriptToLua) subproject in tstl_src/. tstl is managed by bun.sh.
-tstl will compile typescript to lua files.
-The lua files are then include_str! into the rust crate.
-This should be managed by the crates' build.rs.
+tstl will compile typescript into lua files.
+The lua files are included into rust with include_str!, automatically added by a build.rs script.
+The main api is replay_script::ReplayScript, which implements Deserialize.
 
 ## Rust
 Use idiomatic Rust.
@@ -16,3 +15,10 @@ Prefer functional style programming:
 Leverage Rust's type system and zero-cost abstractions.
 
 Never deeply nest functions; break them up into smaller, single-purpose functions.
+
+Omit code comments entirely, except for documentation comments.
+
+## Editing
+Do not add extra documentation, sample usages, sample data, etc.; unless explicitly requested.
+
+Do not give a final summary of steps done. Simply state the task is complete.

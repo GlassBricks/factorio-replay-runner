@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use async_process::{Child, Command};
 use async_std::io::{BufReader, ReadExt};
 use std::io;
-use std::process::{Output, Stdio};
+use std::process::{ExitStatus, Output, Stdio};
 use std::{
     fs::{File, create_dir_all, remove_dir_all},
     path::{Path, PathBuf},
@@ -37,6 +37,7 @@ impl FactorioInstance {
         let mut saves_path = self.install_dir_abs.join("saves");
         create_dir_all(&saves_path)?;
         saves_path.push(file_name);
+        saves_path.set_extension("zip");
         Ok(File::create(saves_path)?)
     }
 
@@ -48,7 +49,9 @@ impl FactorioInstance {
 
     pub fn delete_saves_dir(&self) -> Result<()> {
         let saves_path = self.install_dir_abs.join("saves");
-        remove_dir_all(&saves_path)?;
+        if saves_path.exists() {
+            remove_dir_all(&saves_path)?;
+        }
         Ok(())
     }
 
@@ -97,6 +100,10 @@ impl FactorioProcess {
             .await?;
         Ok(output)
     }
+
+    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> {
+        self.child.status()
+    }
 }
 
 impl Drop for FactorioProcess {
@@ -111,7 +118,7 @@ mod tests {
     use crate::{factorio_install_dir::FactorioInstallDir, save_file::TEST_VERSION};
 
     impl FactorioInstance {
-        pub(crate) async fn get_test_installation() -> FactorioInstance {
+        pub(crate) async fn test_installation() -> FactorioInstance {
             FactorioInstallDir::test_dir()
                 .get_or_download_factorio(TEST_VERSION)
                 .await
@@ -120,8 +127,45 @@ mod tests {
     }
 
     #[async_std::test]
+    async fn test_install_dir() -> Result<()> {
+        let factorio = FactorioInstance::test_installation().await;
+        let install_dir = factorio.install_dir();
+        assert!(install_dir.exists());
+        assert!(install_dir.join("bin/x64/factorio").exists());
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_create_and_read_save_file() -> Result<()> {
+        let factorio = FactorioInstance::test_installation().await;
+
+        factorio.delete_saves_dir().ok();
+
+        let _file = factorio.create_save_file("test_save")?;
+
+        let saves_path = factorio.install_dir().join("saves").join("test_save.zip");
+        assert!(saves_path.exists());
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_delete_saves_dir() -> Result<()> {
+        let factorio = FactorioInstance::test_installation().await;
+
+        let _file = factorio.create_save_file("test_save")?;
+        let saves_path = factorio.install_dir().join("saves");
+        assert!(saves_path.exists());
+
+        factorio.delete_saves_dir()?;
+        assert!(!saves_path.exists());
+
+        Ok(())
+    }
+
+    #[async_std::test]
     async fn test_spawn() -> Result<()> {
-        let factorio = FactorioInstance::get_test_installation().await;
+        let factorio = FactorioInstance::test_installation().await;
         let mut process = factorio.spawn(&["--version"])?;
         let output = process.read_all().await?;
         assert!(output.contains(&TEST_VERSION.to_string()));
@@ -130,7 +174,7 @@ mod tests {
 
     #[async_std::test]
     async fn test_output() -> Result<()> {
-        let factorio = FactorioInstance::get_test_installation().await;
+        let factorio = FactorioInstance::test_installation().await;
         let stdout = factorio.output(&["--version"]).await?.stdout;
         let output = String::from_utf8(stdout)?;
         assert!(output.contains(&TEST_VERSION.to_string()));

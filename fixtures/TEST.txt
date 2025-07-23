@@ -1,0 +1,3 @@
+[Error] 151 GlassBricks imported a blueprint from the blueprint library!
+[Error] 866 GlassBricks ran disallowed command: /c game.print("hi")
+[Info] 6460 First rocket launched

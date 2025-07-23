@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::fmt::Display;
-use std::path::{absolute, Path, PathBuf};
+use std::path::{Path, PathBuf, absolute};
 
 use crate::factorio_instance::FactorioInstance;
 use crate::utils::{try_download, try_extract};
@@ -114,10 +114,14 @@ impl FactorioInstallDir {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::{File, create_dir, create_dir_all};
+    use tempfile::TempDir;
+    use test_utils;
 
     impl FactorioInstallDir {
         pub(crate) fn test_dir() -> Self {
-            Self::new_or_create("./testtmp").expect("Failed to create test directory")
+            Self::new_or_create(test_utils::test_factorio_installs_dir())
+                .expect("Failed to create test directory")
         }
     }
 
@@ -127,9 +131,6 @@ mod tests {
         assert_eq!(version.to_string(), "1.2.3");
         assert_eq!(version, VersionStr(1, 2, 3))
     }
-
-    use std::fs::{create_dir, create_dir_all, File};
-    use tempfile::TempDir;
 
     #[test]
     fn test_get_versions() -> Result<()> {

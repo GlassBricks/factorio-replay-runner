@@ -147,6 +147,7 @@ pub(crate) const TEST_VERSION: VersionStr = VersionStr::new(2, 0, 57);
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+    use test_utils;
 
     fn create_test_zip(files: &[(&str, &str)]) -> Result<NamedTempFile> {
         let temp_file = NamedTempFile::new()?;
@@ -229,7 +230,8 @@ mod tests {
 
     impl SaveFile<File> {
         pub(crate) fn get_test_save_file() -> Result<SaveFile<File>> {
-            let file = File::open("fixtures/TEST.zip")?;
+            let fixtures_dir = test_utils::fixtures_dir();
+            let file = File::open(fixtures_dir.join("TEST.zip"))?;
             let save_file = SaveFile::new(file)?;
             Ok(save_file)
         }

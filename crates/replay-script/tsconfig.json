@@ -14,10 +14,16 @@
     "noEmitOnError": true,
     "rootDir": "tstl_src"
   },
-  "include": ["tstl_src/"],
+  "include": ["tstl_src/**/*.ts"],
   "tstl": {
     "luaTarget": "5.2",
     "noImplicitSelf": true,
-    "luaLibImport": "inline"
+    "luaLibImport": "inline",
+    "luaPlugins": [
+      {
+        "name": "./tstl_src/no-export-plugin.js"
+      }
+    ],
+    "noHeader": true
   }
 }

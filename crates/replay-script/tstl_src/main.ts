@@ -1,4 +1,5 @@
 import { add_lib, type EventLib } from "event_handler"
+import * as util from "util"
 
 declare global {
   // API
@@ -25,7 +26,9 @@ declare global {
   const storage: {
     _REPLAY_SCRIPT_DATA: LuaSet<String>
   }
+  var util: typeof import("util")
 }
+_G.util = util
 
 type MsgType = "Error" | "Warn" | "Info"
 function logEvent(type: MsgType, ...args: string[]): void {

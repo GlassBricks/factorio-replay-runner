@@ -1,4 +1,4 @@
 /target
 .direnv
 .idea
-**/testtmp/
+/test_tmp/

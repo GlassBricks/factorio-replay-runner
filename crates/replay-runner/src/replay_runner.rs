@@ -5,11 +5,13 @@ use replay_script::ReplayMsg;
 use std::io::{Read, Seek};
 use std::str::FromStr;
 
+use crate::factorio_install_dir::FactorioInstallDir;
 use crate::factorio_instance::FactorioProcess;
 use crate::{factorio_instance::FactorioInstance, save_file::SaveFile};
 
 pub struct ReplayLog {
     pub messages: Vec<ReplayMsg>,
+    pub exit_success: bool,
 }
 
 impl FactorioProcess {
@@ -18,12 +20,18 @@ impl FactorioProcess {
         let mut messages = Vec::new();
         while let Some(line) = lines.next().await {
             let Ok(line) = line else { continue };
+            println!("{line}");
             if let Ok(msg) = ReplayMsg::from_str(&line) {
                 messages.push(msg);
             }
         }
 
-        Ok(ReplayLog { messages })
+        let exit_status = self.wait().await?;
+
+        Ok(ReplayLog {
+            messages,
+            exit_success: exit_status.success(),
+        })
     }
 }
 
@@ -43,14 +51,21 @@ impl FactorioInstance {
         save_file.install_replay_script_to(&mut out_file, replay_script)?;
         Ok(())
     }
+}
 
-    pub async fn install_and_run_replay(
-        &self,
-        save_file: &mut SaveFile<impl Read + Seek>,
-        replay_script: &str,
-    ) -> Result<ReplayLog> {
-        self.add_save_with_installed_replay_script(save_file, replay_script)?;
-        let mut process = self.spawn_replay(save_file.save_name())?;
-        process.collect_replay_log().await
-    }
+pub async fn run_replay(
+    install_dir: &FactorioInstallDir,
+    save_file: &mut SaveFile<impl Read + Seek>,
+    replay_script: &str,
+) -> Result<ReplayLog> {
+    let version = save_file.get_factorio_version()?;
+    let instance = install_dir.get_or_download_factorio(version).await?;
+    instance.delete_saves_dir()?;
+    println!("Installing replay script");
+    instance.add_save_with_installed_replay_script(save_file, replay_script)?;
+    println!("Starting replay");
+    let mut process = instance.spawn_replay(save_file.save_name())?;
+    let result = process.collect_replay_log().await?;
+    println!("Finished replay");
+    Ok(result)
 }

@@ -1,0 +1,6 @@
+[Error] 151 GlassBricks imported a blueprint from the blueprint library!
+[Error] 394 GlassBricks used map editor!
+[Error] 614 GlassBricks used map editor!
+[Error] 866 GlassBricks ran disallowed command: /c game.print("hi")
+[Error] 1122 GlassBricks used map editor!
+[Info] 6460 First rocket launched

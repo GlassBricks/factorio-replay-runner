@@ -1,4 +1,3 @@
-import * as util from "util"
 const allowedCommands = util.list_to_map([
   "admins",
   "ban",
