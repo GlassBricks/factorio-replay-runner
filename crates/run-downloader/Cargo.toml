@@ -1,0 +1,25 @@
+[package]
+name = "run-downloader"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+async-std = { version = "1.13.1", features = ["attributes"] }
+async-trait = "0.1.88"
+dropbox-sdk = { version = "0.19.1", features = ["dbx_sharing", "default_async_client", "default_client", "async_routes"] }
+futures = "0.3.31"
+google-drive = "0.7.0"
+lazy_static = "1.5.0"
+regex = "1.11.1"
+reqwest = { version = "0.11", features = ["json"] }
+serde_json = "1.0.141"
+tempfile = "3.20.0"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+zip = "4.3.0"
+
+[dev-dependencies]
+tokio = { version = "1.47.0", features = ["macros", "rt", "rt-multi-thread"] }
+zip = { version = "4.3.0", features = ["deflate"] }

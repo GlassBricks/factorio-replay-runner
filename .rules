@@ -1,24 +1,39 @@
 This is a rust project broken into multiple crates.
 
-## replay-script crate
+## Crates
+
+### replay-script crate
 This crate contains a tstl (TypescriptToLua) subproject in tstl_src/. tstl is managed by bun.sh.
 tstl will compile typescript into lua files.
 The lua files are included into rust with include_str!, automatically added by a build.rs script.
 The main api is replay_script::ReplayScript, which implements Deserialize.
 
+### replay-runner
+Handles factorio installation and replay execution.
+
+### cli
+Simple cli to run things for manual testing.
+
+### run-downloader
+Fetches speedrun.com runs, finds replay links, and safely downloads them.
+
 ## Rust
 Use idiomatic Rust.
 This project does not use unsafe.
-Prefer functional style programming:
-- Prefer using iter() over for loops.
-- When using result and option, prefer, such as map, and_then, or_else, ok_or_else, etc., over if statements and if let.
-Leverage Rust's type system and zero-cost abstractions.
+Prefer functional style programming, e.g. use iter() over for loops if possible.
 
-Never deeply nest functions; break them up into smaller, single-purpose functions.
+Never deeply nest functions, either:
+- break them up into smaller, single-purpose functions
+- Invert if-statements and control flow to avoid nesting
 
-Omit code comments entirely, except for documentation comments.
+Omit code comments entirely, except for documentation comments. Keep documentation extremely brief (1-2 sentences, if any).
 
 ## Editing
-Do not add extra documentation, sample usages, sample data, etc.; unless explicitly requested.
+Do not add extra documentation, sample usages, sample data, README.md files, or any other such, unless explicitly requested.
 
 Do not give a final summary of steps done. Simply state the task is complete.
+
+Do not do edits outside the scope of the instructions. You can suggest further steps, but do not implement them.
+
+Inspect existing project Cargo.toml files to get a feel for which dependencies to use (e.g. async-std vs tokio).
+To add crate dependencies, use `cargo add` instead of manually editing Cargo.toml when possible, to get the latest version of the crate.

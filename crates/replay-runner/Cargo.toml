@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0"
 async-process = "2.3.1"
-async-std = { version = "1.12", features = ["attributes"] }
+async-std = { version = "1.13.1", features = ["attributes"] }
 itertools = "0.14.0"
 tempfile = "3.20.0"
 zip = "4.0.0"

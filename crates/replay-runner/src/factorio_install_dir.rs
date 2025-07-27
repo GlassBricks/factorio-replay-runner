@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
@@ -106,7 +106,7 @@ impl FactorioInstallDir {
         } else {
             self.download_factorio(version).await?;
             self.get_factorio(version)
-                .ok_or_else(|| anyhow::anyhow!("Failed to find factorio after download"))
+                .ok_or_else(|| anyhow!("Failed to find factorio after download"))
         }
     }
 }
