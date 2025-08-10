@@ -1,35 +1,15 @@
-use crate::error::ServiceError;
-use crate::logging;
-use crate::services::{FileInfo, FileService};
+use crate::{
+    ServiceError,
+    services::{FileInfo, FileService},
+};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use google_drive::{Client, ClientError, traits::FileOps};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::path::Path;
-use tracing::{debug, error, info, instrument};
 
-lazy_static! {
-    static ref GOOGLE_DRIVE_URL_REGEX: Regex = Regex::new(
-        r"(?:https://)?(?:drive\.google\.com/(?:file/d/|open\?id=)|docs\.google\.com/file/d/)([a-zA-Z0-9_-]+)"
-    ).unwrap();
-}
-
-fn detect_google_drive_links(input: &str) -> Vec<String> {
-    let mut file_ids = Vec::new();
-
-    for cap in GOOGLE_DRIVE_URL_REGEX.captures_iter(input) {
-        if let Some(file_id) = cap.get(1) {
-            let id = file_id.as_str().to_string();
-            debug!("Found Google Drive file ID: {}", id);
-            file_ids.push(id);
-        }
-    }
-
-    info!("Detected {} Google Drive links", file_ids.len());
-    file_ids
-}
-
+use super::FileDownloadService;
 pub struct GoogleDriveService {
     client: Client,
 }
@@ -40,20 +20,23 @@ impl GoogleDriveService {
     }
 }
 
-#[async_trait]
 impl FileService for GoogleDriveService {
-    type FileId = String;
+    fn detect_link(input: &str) -> Option<String> {
+        lazy_static! {
+            static ref GOOGLE_DRIVE_URL_REGEX: Regex = Regex::new(
+                r"(?:https://)?(?:drive\.google\.com/(?:file/d/|open\?id=)|docs\.google\.com/file/d/)([a-zA-Z0-9_-]+)"
+            ).unwrap();
+        }
 
-    fn detect_links(&self, input: &str) -> Vec<Self::FileId> {
-        detect_google_drive_links(input)
+        let cap = GOOGLE_DRIVE_URL_REGEX.captures(input)?;
+        let id = cap.get(1)?.as_str().to_string();
+        return Some(id);
     }
+}
 
-    #[instrument(skip(self))]
-    async fn get_file_info(&self, file_id: &Self::FileId) -> Result<FileInfo, ServiceError> {
-        let _span = logging::service_operation_span(self.service_name(), "get_file_info");
-
-        debug!("Getting file info for Google Drive file: {}", file_id);
-
+#[async_trait]
+impl FileDownloadService for GoogleDriveService {
+    async fn get_file_info(&mut self, file_id: &str) -> Result<FileInfo, ServiceError> {
         // Get file metadata using the google_drive crate
         let response = self
             .client
@@ -65,10 +48,7 @@ impl FileService for GoogleDriveService {
                 false, // supports_team_drives
             )
             .await
-            .map_err(|e| {
-                error!("Failed to get Google Drive file info: {}", e);
-                Self::convert_client_error(e)
-            })?;
+            .map_err(Self::convert_client_error)?;
 
         let file = response.body;
         // Extract file information
@@ -84,37 +64,23 @@ impl FileService for GoogleDriveService {
             Some(file.mime_type)
         };
 
-        // Check if file is publicly accessible by looking at permissions
-        // We'll be conservative and assume it's not public unless we can confirm
-        let is_public = !file.permissions.is_empty();
-
         let file_info = FileInfo {
             name,
             size,
             mime_type,
-            is_public,
         };
 
-        debug!("Retrieved Google Drive file info: {:?}", file_info);
         Ok(file_info)
     }
 
-    #[instrument(skip(self))]
-    async fn download(&self, file_id: &Self::FileId, dest_path: &Path) -> Result<(), ServiceError> {
-        let _span = logging::download_span(self.service_name(), file_id);
-
-        info!("Starting download of Google Drive file: {}", file_id);
-
+    async fn download(&mut self, file_id: &str, dest_path: &Path) -> Result<(), ServiceError> {
         // Download file content using the google_drive crate
         let response = self
             .client
             .files()
             .download_by_id(file_id)
             .await
-            .map_err(|e| {
-                error!("Failed to download from Google Drive: {}", e);
-                Self::convert_client_error(e)
-            })?;
+            .map_err(Self::convert_client_error)?;
 
         let bytes = response.body;
 
@@ -132,10 +98,6 @@ impl FileService for GoogleDriveService {
         std::fs::write(dest_path, bytes)
             .map_err(|e| ServiceError::fatal(anyhow!("Failed to write file: {}", e)))?;
 
-        info!(
-            "Successfully downloaded Google Drive file to {:?}",
-            dest_path
-        );
         Ok(())
     }
 
@@ -184,50 +146,5 @@ impl GoogleDriveService {
             }
             _ => ServiceError::fatal(anyhow!("Google Drive client error: {}", error)),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_link_detection() {
-        let test_cases = vec![
-            (
-                "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view",
-                "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-            ),
-            (
-                "https://drive.google.com/open?id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-            ),
-            (
-                "https://docs.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-            ),
-        ];
-
-        for (url, expected_id) in test_cases {
-            let links = detect_google_drive_links(url);
-            assert_eq!(links.len(), 1);
-            assert_eq!(links[0], expected_id);
-        }
-    }
-
-    #[test]
-    fn test_no_links_detected() {
-        let no_link_text = "This is just some text without any Google Drive links";
-        let links = detect_google_drive_links(no_link_text);
-        assert!(links.is_empty());
-    }
-
-    #[test]
-    fn test_multiple_links() {
-        let text = "Check out these files: https://drive.google.com/file/d/123/view and https://drive.google.com/open?id=456";
-        let links = detect_google_drive_links(text);
-        assert_eq!(links.len(), 2);
-        assert!(links.contains(&"123".to_string()));
-        assert!(links.contains(&"456".to_string()));
     }
 }

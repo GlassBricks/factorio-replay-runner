@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
-use async_std::io::BufReadExt;
-use async_std::prelude::StreamExt;
+use futures::io::AsyncBufReadExt;
 use replay_script::ReplayMsg;
 use std::io::{Read, Seek};
 use std::str::FromStr;
@@ -40,13 +39,22 @@ impl FactorioInstance {
 
 impl FactorioProcess {
     pub async fn collect_replay_log(&mut self) -> Result<ReplayLog> {
-        let mut lines = self.stdout_reader()?.lines();
+        let mut reader = self.stdout_reader()?;
+        let mut line = String::new();
         let mut messages = Vec::new();
-        while let Some(line) = lines.next().await {
-            let Ok(line) = line else { continue };
-            println!("{line}");
-            if let Ok(msg) = ReplayMsg::from_str(&line) {
-                messages.push(msg);
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let line = line.trim_end();
+                    println!("{line}");
+                    if let Ok(msg) = ReplayMsg::from_str(line) {
+                        messages.push(msg);
+                    }
+                }
+                Err(_) => continue,
             }
         }
 

@@ -6,6 +6,9 @@ use std::path::Path;
 pub mod google_drive;
 pub use google_drive::GoogleDriveService;
 
+#[cfg(test)]
+mod google_drive_test;
+
 /// Information about a file from a sharing service
 #[derive(Debug, Clone)]
 pub struct FileInfo {
@@ -15,7 +18,7 @@ pub struct FileInfo {
 }
 
 #[async_trait]
-pub trait FileDownloader: Send + Sync {
+pub trait FileDownloadService: Send + Sync {
     fn service_name(&self) -> &str;
 
     async fn download(&mut self, file_id: &str, dest_path: &Path) -> Result<(), ServiceError>;
@@ -24,20 +27,20 @@ pub trait FileDownloader: Send + Sync {
 }
 
 #[async_trait]
-pub trait FileServiceDyn: FileDownloader + Send + Sync {
-    fn detect_link(&self, input: &str) -> Option<String>;
+pub trait FileServiceDyn: FileDownloadService + Send + Sync {
+    fn detect_link_dyn(&self, input: &str) -> Option<String>;
 }
 
-pub trait FileService: FileDownloader + Send + Sync {
-    fn detect_links(input: &str) -> Option<String>;
+pub trait FileService: FileDownloadService + Send + Sync {
+    fn detect_link(input: &str) -> Option<String>;
 }
 
 impl<T> FileServiceDyn for T
 where
     T: FileService + Send + Sync,
 {
-    fn detect_link(&self, input: &str) -> Option<String> {
-        T::detect_links(input)
+    fn detect_link_dyn(&self, input: &str) -> Option<String> {
+        T::detect_link(input)
     }
 }
 
@@ -49,13 +52,13 @@ pub mod test_util {
 
     #[async_trait]
     impl FileService for MockService {
-        fn detect_links(input: &str) -> Option<String> {
+        fn detect_link(input: &str) -> Option<String> {
             input.contains("mock://").then(|| "test_id".to_string())
         }
     }
 
     #[async_trait]
-    impl FileDownloader for MockService {
+    impl FileDownloadService for MockService {
         fn service_name(&self) -> &str {
             "mock"
         }

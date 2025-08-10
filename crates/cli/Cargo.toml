@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-async-std = { workspace = true }
+tokio = { workspace = true }
 clap = { workspace = true }
 replay-runner = { path = "../replay-runner" }
 replay-script = { version = "0.1.0", path = "../replay-script" }

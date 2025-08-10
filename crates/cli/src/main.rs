@@ -31,7 +31,7 @@ struct Args {
     output: Option<PathBuf>,
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -161,7 +161,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_run_replay_with_all_rules() -> Result<()> {
         let test_dir = test_utils::test_tmp_dir().join("cli_test");
         let fixtures_dir = test_utils::fixtures_dir();

@@ -149,7 +149,7 @@ impl FileDownloader {
 
     fn detect_service(&self, input: &str) -> Result<(&DynFileService, String), DownloadError> {
         for service in &self.services {
-            if let Some(id) = service.borrow().detect_link(input) {
+            if let Some(id) = service.borrow().detect_link_dyn(input) {
                 return Ok((service, id));
             }
         }
@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(downloader.security_config.max_file_size, 1024);
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_no_links_detected() {
         logging::init_test_logging();
 

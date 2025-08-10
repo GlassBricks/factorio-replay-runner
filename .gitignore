@@ -1,4 +1,5 @@
 /target
 .direnv
 .idea
+.env
 /test_tmp/

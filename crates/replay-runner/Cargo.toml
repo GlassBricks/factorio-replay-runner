@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 async-process = { workspace = true }
-async-std = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
 itertools = { workspace = true }
 tempfile = { workspace = true }
 zip = { workspace = true }

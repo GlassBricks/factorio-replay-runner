@@ -1,7 +1,7 @@
 use crate::save_file::SaveFile;
 use anyhow::{Context, Result};
 use async_process::{Child, Command};
-use async_std::io::{BufReader, ReadExt};
+use futures::io::{AsyncReadExt, BufReader};
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 use std::{
@@ -126,7 +126,7 @@ mod tests {
         }
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_install_dir() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
         let install_dir = factorio.install_dir();
@@ -135,7 +135,7 @@ mod tests {
         Ok(())
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_create_and_read_save_file() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
 
@@ -149,7 +149,7 @@ mod tests {
         Ok(())
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_delete_saves_dir() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
 
@@ -163,7 +163,7 @@ mod tests {
         Ok(())
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_spawn() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
         let mut process = factorio.spawn(&["--version"])?;
@@ -172,7 +172,7 @@ mod tests {
         Ok(())
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_output() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
         let stdout = factorio.get_output(&["--version"]).await?.stdout;
