@@ -26,14 +26,11 @@ Never deeply nest functions, either:
 - break them up into smaller, single-purpose functions
 - Invert if-statements and control flow to avoid nesting
 
-Omit code comments entirely, except for documentation comments. Keep documentation extremely brief (1-2 sentences, if any).
+Omit code comments. Instead, opt for self-documenting code.
 
 ## Editing
-Do not add extra documentation, sample usages, sample data, README.md files, or any other such, unless explicitly requested.
-
-Do not give a final summary of steps done. Simply state the task is complete.
+Do not add extra documentation, sample usages, sample data, README.md files, or any other such files, unless explicitly requested.
 
 Do not do edits outside the scope of the instructions. You can suggest further steps, but do not implement them.
 
-Inspect existing project Cargo.toml files to get a feel for which dependencies to use (e.g. async-std vs tokio).
-To add crate dependencies, use `cargo add` instead of manually editing Cargo.toml when possible, to get the latest version of the crate.
+Use `cargo add` instead of manually editing Cargo.toml when possible, to get the latest version of the crates.

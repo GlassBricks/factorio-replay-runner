@@ -1,3 +1,27 @@
 [workspace]
 resolver = "3"
 members = [ "crates/cli", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-process = "2.4.0"
+async-std = { version = "1.13.1", features = ["attributes"] }
+async-trait = "0.1.88"
+clap = { version = "4.5.41", features = ["derive"] }
+dropbox-sdk = { version = "0.19.1", features = ["dbx_sharing", "default_async_client", "default_client", "async_routes"] }
+futures = "0.3.31"
+glob = "0.3"
+google-drive = "0.7.0"
+itertools = "0.14.0"
+lazy_static = "1.5.0"
+regex = "1.11.1"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+strum = { version = "0.27.1", features = ["derive"] }
+tempfile = "3.20.0"
+thiserror = "2.0.12"
+tokio = { version = "1.47.0", features = ["macros", "rt", "rt-multi-thread"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+zip = "4.3.0"
