@@ -499,6 +499,7 @@ dependencies = [
  "clap",
  "replay-runner",
  "replay-script",
+ "serde",
  "serde_json",
  "test-utils",
 ]

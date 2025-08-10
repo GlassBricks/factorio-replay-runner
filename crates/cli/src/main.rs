@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use replay_runner::{
-    factorio_install_dir::FactorioInstallDir, replay_runner::run_replay, save_file::SaveFile,
+    factorio_install_dir::FactorioInstallDir,
+    replay_runner::{ReplayRunResult, run_replay_with_rules},
+    rules::Rules,
+    save_file::SaveFile,
 };
-use replay_script::ReplayScripts;
 use std::io::Write;
 use std::{
     fs::File,
@@ -40,16 +42,6 @@ async fn main() -> Result<()> {
         anyhow::bail!("Rules file does not exist: {}", args.rules_file.display());
     }
 
-    let reader = File::open(&args.rules_file)
-        .with_context(|| format!("Failed to open rules file: {}", args.rules_file.display()))?;
-
-    let replay_scripts: ReplayScripts = serde_json::from_reader(reader).with_context(|| {
-        format!(
-            "Failed to parse rules file as JSON: {}",
-            args.rules_file.display()
-        )
-    })?;
-
     println!("Running replay: {}", args.save_file.display());
     println!("Using rules from: {}", args.rules_file.display());
     println!("Factorio install dir: {}", args.install_dir.display());
@@ -58,40 +50,48 @@ async fn main() -> Result<()> {
         .output
         .unwrap_or_else(|| args.save_file.with_extension("txt"));
 
-    let replay_log = cli_main(
+    let result = cli_main(
         &args.save_file,
-        &replay_scripts,
+        &args.rules_file,
         &args.install_dir,
         &output_path,
     )
     .await?;
 
-    if replay_log.exit_success {
-        println!("Replay completed successfully!");
-    } else {
-        println!("Replay failed!");
-    }
-
-    println!("Results written to: {}", output_path.display());
-    println!("Found {} log messages", replay_log.messages.len());
-
-    let mut info_count = 0;
-    let mut warn_count = 0;
-    let mut error_count = 0;
-
-    for msg in &replay_log.messages {
-        match msg.msg_type {
-            replay_script::MsgType::Info => info_count += 1,
-            replay_script::MsgType::Warn => warn_count += 1,
-            replay_script::MsgType::Error => error_count += 1,
+    match result {
+        ReplayRunResult::PreRunCheckFailed { cause } => {
+            println!("Pre-run check failed: {}", cause);
+            std::process::exit(1);
         }
-    }
+        ReplayRunResult::Success(replay_log) => {
+            if replay_log.exit_success {
+                println!("Replay completed successfully!");
+            } else {
+                println!("Replay failed!");
+            }
 
-    if error_count > 0 || warn_count > 0 || info_count > 0 {
-        println!(
-            "Summary: {} errors, {} warnings, {} info messages",
-            error_count, warn_count, info_count
-        );
+            println!("Results written to: {}", output_path.display());
+            println!("Found {} log messages", replay_log.messages.len());
+
+            let mut info_count = 0;
+            let mut warn_count = 0;
+            let mut error_count = 0;
+
+            for msg in &replay_log.messages {
+                match msg.msg_type {
+                    replay_script::MsgType::Info => info_count += 1,
+                    replay_script::MsgType::Warn => warn_count += 1,
+                    replay_script::MsgType::Error => error_count += 1,
+                }
+            }
+
+            if error_count > 0 || warn_count > 0 || info_count > 0 {
+                println!(
+                    "Summary: {} errors, {} warnings, {} info messages",
+                    error_count, warn_count, info_count
+                );
+            }
+        }
     }
 
     Ok(())
@@ -99,10 +99,10 @@ async fn main() -> Result<()> {
 
 async fn cli_main(
     save_file_path: &Path,
-    replay_scripts: &ReplayScripts,
+    rules_file_path: &Path,
     install_dir_path: &Path,
     output_path: &Path,
-) -> Result<replay_runner::replay_runner::ReplayLog> {
+) -> Result<ReplayRunResult> {
     let save_file_handle = File::open(save_file_path)
         .with_context(|| format!("Failed to open save file: {}", save_file_path.display()))?;
 
@@ -116,15 +116,25 @@ async fn cli_main(
         )
     })?;
 
-    let replay_script = replay_scripts.to_string();
+    let reader = File::open(rules_file_path)
+        .with_context(|| format!("Failed to open rules file: {}", rules_file_path.display()))?;
 
-    let replay_log = run_replay(&install_dir, &mut save_file, &replay_script)
+    let rules: Rules = serde_json::from_reader(reader).with_context(|| {
+        format!(
+            "Failed to parse rules file as JSON: {}",
+            rules_file_path.display()
+        )
+    })?;
+
+    let result = run_replay_with_rules(&install_dir, &mut save_file, &rules)
         .await
-        .context("Failed to run replay")?;
+        .context("Failed to run replay with rules")?;
 
-    write_replay_log(&replay_log, output_path).context("Failed to write replay log")?;
+    if let ReplayRunResult::Success(ref replay_log) = result {
+        write_replay_log(replay_log, output_path).context("Failed to write replay log")?;
+    }
 
-    Ok(replay_log)
+    Ok(result)
 }
 
 fn write_replay_log(
@@ -144,6 +154,8 @@ fn write_replay_log(
 
 #[cfg(test)]
 mod tests {
+    use replay_runner::rules::ExpectedMods;
+    use replay_script::ReplayScripts;
     use test_utils;
 
     use super::*;
@@ -161,16 +173,23 @@ mod tests {
         fs::create_dir_all(&test_dir)?;
 
         let test_save_path = fixtures_dir.join("TEST.zip");
-        let replay_scripts = ReplayScripts::all_enabled();
+        let rules_file_path = fixtures_dir.join("all_rules.json");
         let output_path = test_dir.join("TEST.txt");
 
-        let replay_log = cli_main(
+        let result = cli_main(
             &test_save_path,
-            &replay_scripts,
+            &rules_file_path,
             &install_dir_path,
             &output_path,
         )
         .await?;
+
+        let replay_log = match result {
+            ReplayRunResult::Success(log) => log,
+            ReplayRunResult::PreRunCheckFailed { cause } => {
+                panic!("Pre-run check failed: {}", cause);
+            }
+        };
 
         assert!(replay_log.exit_success, "Replay should exit successfully");
 
@@ -199,10 +218,14 @@ mod tests {
     #[ignore]
     fn write_all_rules_to_fixtures() {
         let fixtures_dir = test_utils::fixtures_dir();
-        let all_rules = ReplayScripts::all_enabled();
+        let all_scripts = ReplayScripts::all_enabled();
+        let test_all_rules = Rules {
+            expected_mods: ExpectedMods::SpaceAge,
+            checks: all_scripts,
+        };
 
         let rules_json_path = fixtures_dir.join("all_rules.json");
-        let rules_json = serde_json::to_string_pretty(&all_rules).unwrap();
+        let rules_json = serde_json::to_string_pretty(&test_all_rules).unwrap();
         fs::write(rules_json_path, rules_json).unwrap();
     }
 }

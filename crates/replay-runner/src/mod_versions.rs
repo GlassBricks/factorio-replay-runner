@@ -17,6 +17,8 @@ struct ModOption {
     version: String,
 }
 
+pub type ModVersions = HashMap<String, VersionStr>;
+
 impl FactorioInstance {
     fn read_mod_list(&self) -> Result<Vec<ModOption>> {
         let path = self.install_dir().join("mods/mod-list.json");
@@ -25,10 +27,7 @@ impl FactorioInstance {
         Ok(mod_list.mods)
     }
 
-    pub async fn get_mod_versions(
-        &mut self,
-        save_name: &str,
-    ) -> Result<HashMap<String, VersionStr>> {
+    pub async fn get_mod_versions(&mut self, save_name: &str) -> Result<ModVersions> {
         self.get_output(&["--sync-mods", save_name]).await?;
 
         let mod_versions = self
