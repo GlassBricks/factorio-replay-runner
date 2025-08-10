@@ -12,61 +12,68 @@ pub struct FileInfo {
     pub name: String,
     pub size: u64,
     pub mime_type: Option<String>,
-    pub is_public: bool,
 }
 
 #[async_trait]
-pub trait FileService: Send + Sync {
-    type FileId: Debug + Clone + Send + Sync;
+pub trait FileDownloader: Send + Sync {
+    fn service_name(&self) -> &str;
 
-    fn detect_links(&self, input: &str) -> Vec<Self::FileId>;
+    async fn download(&mut self, file_id: &str, dest_path: &Path) -> Result<(), ServiceError>;
 
-    async fn download(&self, file_id: &Self::FileId, dest_path: &Path) -> Result<(), ServiceError>;
+    async fn get_file_info(&mut self, file_id: &str) -> Result<FileInfo, ServiceError>;
+}
 
-    async fn get_file_info(&self, file_id: &Self::FileId) -> Result<FileInfo, ServiceError>;
+#[async_trait]
+pub trait FileServiceDyn: FileDownloader + Send + Sync {
+    fn detect_link(&self, input: &str) -> Option<String>;
+}
 
-    fn service_name(&self) -> &'static str;
+pub trait FileService: FileDownloader + Send + Sync {
+    fn detect_links(input: &str) -> Option<String>;
+}
+
+impl<T> FileServiceDyn for T
+where
+    T: FileService + Send + Sync,
+{
+    fn detect_link(&self, input: &str) -> Option<String> {
+        T::detect_links(input)
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub mod test_util {
     use super::*;
-    use crate::error::ServiceError;
 
-    // Mock service for testing
-    struct MockService;
+    pub struct MockService;
 
     #[async_trait]
     impl FileService for MockService {
-        type FileId = String;
+        fn detect_links(input: &str) -> Option<String> {
+            input.contains("mock://").then(|| "test_id".to_string())
+        }
+    }
 
-        fn detect_links(&self, input: &str) -> Vec<Self::FileId> {
-            if input.contains("mock://") {
-                vec!["test_id".to_string()]
-            } else {
-                vec![]
-            }
+    #[async_trait]
+    impl FileDownloader for MockService {
+        fn service_name(&self) -> &str {
+            "mock"
         }
 
         async fn download(
-            &self,
-            _file_id: &Self::FileId,
+            &mut self,
+            _file_id: &str,
             _dest_path: &Path,
         ) -> Result<(), ServiceError> {
             Ok(())
         }
 
-        async fn get_file_info(&self, _file_id: &Self::FileId) -> Result<FileInfo, ServiceError> {
+        async fn get_file_info(&mut self, _file_id: &str) -> Result<FileInfo, ServiceError> {
             Ok(FileInfo {
                 name: "test.zip".to_string(),
                 size: 1000,
                 mime_type: Some("application/zip".to_string()),
-                is_public: true,
             })
-        }
-
-        fn service_name(&self) -> &'static str {
-            "mock"
         }
     }
 }

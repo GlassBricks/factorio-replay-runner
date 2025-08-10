@@ -9,7 +9,6 @@ pub struct SecurityConfig {
     pub download_timeout: Duration,
     pub max_extracted_size: u64,
     pub max_zip_entries: usize,
-    pub max_compression_ratio: f64,
     pub allowed_extensions: Vec<String>,
 }
 
@@ -20,7 +19,6 @@ impl Default for SecurityConfig {
             download_timeout: Duration::from_secs(120), // 2 minutes
             max_extracted_size: 500 * 1024 * 1024,      // 500 MB
             max_zip_entries: 1000,
-            max_compression_ratio: 100.0,
             allowed_extensions: vec![".zip".to_string()],
         }
     }
@@ -157,7 +155,6 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
     }
 
     let mut total_uncompressed_size = 0u64;
-    let mut total_compressed_size = 0u64;
 
     for i in 0..archive.len() {
         let entry = archive
@@ -167,7 +164,6 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
         validate_zip_entry_path(entry.name())?;
 
         total_uncompressed_size += entry.size();
-        total_compressed_size += entry.compressed_size();
 
         // Check if individual file is too large
         if entry.size() > config.max_extracted_size {
@@ -196,23 +192,6 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
             total_uncompressed_size,
             config.max_extracted_size
         ));
-    }
-
-    // Check compression ratio to detect ZIP bombs
-    if total_compressed_size > 0 {
-        let compression_ratio = total_uncompressed_size as f64 / total_compressed_size as f64;
-        if compression_ratio > config.max_compression_ratio {
-            warn!(
-                "Compression ratio {:.2} exceeds maximum {:.2}",
-                compression_ratio, config.max_compression_ratio
-            );
-            return Err(anyhow!(
-                "Compression ratio {:.2} exceeds maximum {:.2} (potential ZIP bomb)",
-                compression_ratio,
-                config.max_compression_ratio
-            ));
-        }
-        debug!("Compression ratio {:.2} is acceptable", compression_ratio);
     }
 
     debug!("ZIP file validation passed");
@@ -504,7 +483,6 @@ mod tests {
             name: "test.zip".to_string(),
             size: 200,
             mime_type: Some("application/zip".to_string()),
-            is_public: true,
         };
 
         let result = validate_file_info(&large_file_info, &config);
