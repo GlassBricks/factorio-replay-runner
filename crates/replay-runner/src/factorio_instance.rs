@@ -71,7 +71,7 @@ impl FactorioInstance {
         Ok(FactorioProcess::new(child))
     }
 
-    pub fn output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
+    pub fn get_output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
         self.new_run_command().args(args).output()
     }
 }
@@ -175,7 +175,7 @@ mod tests {
     #[async_std::test]
     async fn test_output() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
-        let stdout = factorio.output(&["--version"]).await?.stdout;
+        let stdout = factorio.get_output(&["--version"]).await?.stdout;
         let output = String::from_utf8(stdout)?;
         assert!(output.contains(&TEST_VERSION.to_string()));
         Ok(())

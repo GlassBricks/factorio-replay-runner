@@ -1,4 +1,4 @@
-use anyhow::{self, Result, anyhow};
+use anyhow::{Result, anyhow};
 use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, warn};

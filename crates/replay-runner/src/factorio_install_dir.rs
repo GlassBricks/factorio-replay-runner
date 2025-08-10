@@ -2,8 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
+use crate::cmd::{try_download, try_extract};
 use crate::factorio_instance::FactorioInstance;
-use crate::utils::{try_download, try_extract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VersionStr(pub u16, pub u16, pub u16);
