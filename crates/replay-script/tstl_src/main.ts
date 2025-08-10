@@ -71,8 +71,8 @@ addReplayLib({
     storage._REPLAY_SCRIPT_DATA = new LuaSet<String>()
   },
   on_load() {
+    if (storage._REPLAY_SCRIPT_DATA != undefined) return
     script.on_event(defines.events.on_tick, () => {
-      if (storage._REPLAY_SCRIPT_DATA != undefined) return
       for (const fn of afterReplayFns) fn()
     })
   },
