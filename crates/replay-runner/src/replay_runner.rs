@@ -14,9 +14,9 @@ pub struct ReplayLog {
     pub exit_success: bool,
 }
 
-pub enum ReplayRunResult {
-    PreRunCheckFailed { cause: String },
-    Success(ReplayLog),
+pub enum RunResult {
+    PreRunCheckFailed(anyhow::Error),
+    ReplayRan(ReplayLog),
 }
 
 impl FactorioInstance {
@@ -85,7 +85,7 @@ pub async fn run_replay_with_rules(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<impl Read + Seek>,
     rules: &Rules,
-) -> Result<ReplayRunResult> {
+) -> Result<RunResult> {
     let version = save_file.get_factorio_version()?;
     let mut instance = install_dir.get_or_download_factorio(version).await?;
 
@@ -99,14 +99,12 @@ pub async fn run_replay_with_rules(
         .context("Failed to get mod versions")?;
 
     if let Err(err) = check_expected_mods(&rules.expected_mods, &mod_versions) {
-        return Ok(ReplayRunResult::PreRunCheckFailed {
-            cause: err.to_string(),
-        });
+        return Ok(RunResult::PreRunCheckFailed(err));
     }
 
     println!("Pre-run checks passed, running replay");
     let replay_script = rules.checks.to_string();
     let replay_log = run_replay_internal(&instance, save_file, &replay_script).await?;
 
-    Ok(ReplayRunResult::Success(replay_log))
+    Ok(RunResult::ReplayRan(replay_log))
 }

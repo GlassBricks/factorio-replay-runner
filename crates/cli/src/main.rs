@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
-    replay_runner::{ReplayRunResult, run_replay_with_rules},
+    replay_runner::{ReplayLog, RunResult, run_replay_with_rules},
     rules::Rules,
     save_file::SaveFile,
 };
@@ -58,43 +58,55 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    match result {
-        ReplayRunResult::PreRunCheckFailed { cause } => {
-            println!("Pre-run check failed: {}", cause);
-            std::process::exit(1);
+    let success = match result {
+        RunResult::PreRunCheckFailed(err) => {
+            println!("Pre-run check failed: {}", err);
+            false
         }
-        ReplayRunResult::Success(replay_log) => {
+        RunResult::ReplayRan(replay_log) => {
             if replay_log.exit_success {
                 println!("Replay completed successfully!");
             } else {
                 println!("Replay failed!");
             }
-
-            println!("Results written to: {}", output_path.display());
-            println!("Found {} log messages", replay_log.messages.len());
-
-            let mut info_count = 0;
-            let mut warn_count = 0;
-            let mut error_count = 0;
-
-            for msg in &replay_log.messages {
-                match msg.msg_type {
-                    replay_script::MsgType::Info => info_count += 1,
-                    replay_script::MsgType::Warn => warn_count += 1,
-                    replay_script::MsgType::Error => error_count += 1,
-                }
-            }
-
-            if error_count > 0 || warn_count > 0 || info_count > 0 {
-                println!(
-                    "Summary: {} errors, {} warnings, {} info messages",
-                    error_count, warn_count, info_count
-                );
-            }
+            summarize_results(&replay_log, &output_path);
+            replay_log.exit_success
         }
+    };
+
+    if !success {
+        std::process::exit(1);
     }
 
     Ok(())
+}
+
+fn summarize_results(replay_log: &ReplayLog, replay_log_path: &Path) {
+    println!("Results written to: {}", replay_log_path.display());
+    println!("{} log messages", replay_log.messages.len());
+
+    let mut info_count = 0;
+    let mut warn_count = 0;
+    let mut error_count = 0;
+
+    for msg in &replay_log.messages {
+        match msg.msg_type {
+            replay_script::MsgType::Info => info_count += 1,
+            replay_script::MsgType::Warn => warn_count += 1,
+            replay_script::MsgType::Error => error_count += 1,
+        }
+    }
+
+    let result = if error_count > 0 {
+        "err"
+    } else if warn_count > 0 {
+        "warn"
+    } else {
+        "ok"
+    };
+
+    println!("Overall result: {result}");
+    println!("Summary: {error_count} errors, {warn_count} warnings, {info_count} info messages");
 }
 
 async fn cli_main(
@@ -102,7 +114,7 @@ async fn cli_main(
     rules_file_path: &Path,
     install_dir_path: &Path,
     output_path: &Path,
-) -> Result<ReplayRunResult> {
+) -> Result<RunResult> {
     let save_file_handle = File::open(save_file_path)
         .with_context(|| format!("Failed to open save file: {}", save_file_path.display()))?;
 
@@ -130,7 +142,7 @@ async fn cli_main(
         .await
         .context("Failed to run replay with rules")?;
 
-    if let ReplayRunResult::Success(ref replay_log) = result {
+    if let RunResult::ReplayRan(ref replay_log) = result {
         write_replay_log(replay_log, output_path).context("Failed to write replay log")?;
     }
 
@@ -185,9 +197,9 @@ mod tests {
         .await?;
 
         let replay_log = match result {
-            ReplayRunResult::Success(log) => log,
-            ReplayRunResult::PreRunCheckFailed { cause } => {
-                panic!("Pre-run check failed: {}", cause);
+            RunResult::ReplayRan(log) => log,
+            RunResult::PreRunCheckFailed(err) => {
+                panic!("Pre-run check failed: {}", err);
             }
         };
 
