@@ -3,12 +3,6 @@ use async_trait::async_trait;
 use std::fmt::Debug;
 use std::path::Path;
 
-pub mod google_drive;
-pub use google_drive::GoogleDriveService;
-
-#[cfg(test)]
-mod google_drive_test;
-
 /// Information about a file from a sharing service
 #[derive(Debug, Clone)]
 pub struct FileInfo {

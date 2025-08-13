@@ -6,7 +6,7 @@ pub mod services;
 pub use error::{DownloadError, ServiceError};
 pub use security::SecurityConfig;
 use services::FileServiceDyn;
-pub use services::{FileInfo, FileService, GoogleDriveService};
+pub use services::{FileInfo, FileService};
 
 use anyhow::Result;
 use std::{cell::RefCell, path::PathBuf};
