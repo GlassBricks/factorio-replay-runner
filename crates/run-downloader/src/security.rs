@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
-use std::path::Path;
+use anyhow::{Result, anyhow, bail};
+use std::io::Read;
 use std::time::Duration;
-use tracing::{debug, warn};
+use std::{fs::File, path::Path};
 
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
@@ -55,24 +55,18 @@ impl SecurityConfig {
     }
 }
 
-pub fn validate_file_size(size: u64, config: &SecurityConfig) -> Result<()> {
+fn validate_file_size(size: u64, config: &SecurityConfig) -> Result<()> {
     if size > config.max_file_size {
-        warn!(
-            "File size {} exceeds maximum allowed {}",
-            size, config.max_file_size
-        );
-        return Err(anyhow!(
+        bail!(
             "File size {} exceeds maximum allowed {} bytes",
             size,
             config.max_file_size
-        ));
+        );
     }
-    debug!("File size {} is within limits", size);
     Ok(())
 }
 
-/// Validate file extension against allowed extensions
-pub fn validate_file_extension(filename: &str, config: &SecurityConfig) -> Result<()> {
+fn validate_file_extension(filename: &str, config: &SecurityConfig) -> Result<()> {
     let extension = Path::new(filename)
         .extension()
         .and_then(|ext| ext.to_str())
@@ -80,73 +74,31 @@ pub fn validate_file_extension(filename: &str, config: &SecurityConfig) -> Resul
 
     if let Some(ext) = extension {
         if config.allowed_extensions.contains(&ext) {
-            debug!("File extension {} is allowed", ext);
             return Ok(());
         }
     }
 
-    warn!("File extension not allowed for file: {}", filename);
-    Err(anyhow!(
+    bail!(
         "File extension not allowed for file: {}. Allowed extensions: {:?}",
         filename,
         config.allowed_extensions
-    ))
+    );
 }
 
-pub fn validate_url_is_https(url: &str) -> Result<()> {
-    if !url.starts_with("https://") {
-        warn!("Non-HTTPS URL rejected: {}", url);
-        return Err(anyhow!("Only HTTPS URLs are allowed"));
+fn validate_zip_file(file: &mut File, config: &SecurityConfig) -> Result<()> {
+    let mut buffer = [0u8; 4];
+    file.read_exact(&mut buffer)
+        .map_err(|e| anyhow!("IO error: {}", e))?;
+
+    if buffer != [0x50, 0x4b, 0x03, 0x04] {
+        return Err(anyhow!("Invalid ZIP magic number"));
     }
-    debug!("URL security validated: {}", url);
-    Ok(())
-}
 
-pub fn validate_content_type(content_type: Option<&str>) -> Result<()> {
-    let allowed_types = [
-        "application/zip",
-        "application/x-zip-compressed",
-        "application/octet-stream",
-    ];
-
-    match content_type {
-        Some(ct) => {
-            let content_type_lower = ct.to_lowercase();
-            if allowed_types
-                .iter()
-                .any(|&allowed| content_type_lower.contains(allowed))
-            {
-                debug!("Content type {} is allowed", ct);
-                Ok(())
-            } else {
-                warn!("Invalid content type: {}", ct);
-                Err(anyhow!("Invalid content type: {}", ct))
-            }
-        }
-        None => {
-            warn!("No content type provided");
-            Err(anyhow!("No content type provided"))
-        }
-    }
-}
-
-/// Validate ZIP file structure
-pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()> {
-    use std::fs::File;
-    use zip::ZipArchive;
-
-    let file = File::open(file_path).map_err(|e| anyhow!("IO error: {}", e))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| anyhow!("ZIP archive error: {}", e))?;
-
-    debug!("Validating ZIP file with {} entries", archive.len());
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| anyhow!("ZIP archive error: {}", e))?;
 
     // Check number of entries
     if archive.len() > config.max_zip_entries {
-        warn!(
-            "ZIP file has {} entries, exceeds maximum {}",
-            archive.len(),
-            config.max_zip_entries
-        );
         return Err(anyhow!(
             "ZIP file has {} entries, exceeds maximum {}",
             archive.len(),
@@ -167,12 +119,6 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
 
         // Check if individual file is too large
         if entry.size() > config.max_extracted_size {
-            warn!(
-                "ZIP entry '{}' size {} exceeds maximum {}",
-                entry.name(),
-                entry.size(),
-                config.max_extracted_size
-            );
             return Err(anyhow!(
                 "ZIP entry '{}' size {} exceeds maximum {}",
                 entry.name(),
@@ -183,10 +129,6 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
     }
 
     if total_uncompressed_size > config.max_extracted_size {
-        warn!(
-            "Total uncompressed size {} exceeds maximum {}",
-            total_uncompressed_size, config.max_extracted_size
-        );
         return Err(anyhow!(
             "Total uncompressed size {} exceeds maximum {}",
             total_uncompressed_size,
@@ -194,36 +136,27 @@ pub fn validate_zip_file(file_path: &Path, config: &SecurityConfig) -> Result<()
         ));
     }
 
-    debug!("ZIP file validation passed");
     Ok(())
 }
 
 /// Validate ZIP entry path for path traversal attacks
 fn validate_zip_entry_path(path: &str) -> Result<()> {
     if path.contains("..") {
-        warn!("Path traversal attempt detected: {}", path);
-        return Err(anyhow!("Path traversal attempt detected: {}", path));
+        bail!("Path traversal attempt detected: {}", path);
     }
 
     if path.starts_with('/') || path.starts_with('\\') {
-        warn!("Absolute path detected: {}", path);
-        return Err(anyhow!("Absolute path detected: {}", path));
+        bail!("Absolute path detected: {}", path);
     }
 
     if path.len() >= 2 && path.chars().nth(1) == Some(':') {
-        warn!("Windows drive path detected: {}", path);
-        return Err(anyhow!("Windows drive path detected: {}", path));
+        bail!("Windows drive path detected: {}", path);
     }
 
-    debug!("ZIP entry path '{}' is safe", path);
     Ok(())
 }
 
-pub fn validate_zip_magic_number(file_path: &Path) -> Result<()> {
-    use std::fs::File;
-    use std::io::Read;
-
-    let mut file = File::open(file_path).map_err(|e| anyhow!("IO error: {}", e))?;
+fn validate_zip_magic_number(file: &mut File) -> Result<()> {
     let mut buffer = [0u8; 4];
     file.read_exact(&mut buffer)
         .map_err(|e| anyhow!("IO error: {}", e))?;
@@ -234,11 +167,9 @@ pub fn validate_zip_magic_number(file_path: &Path) -> Result<()> {
     const ZIP_SPANNED_MAGIC: [u8; 4] = [0x50, 0x4B, 0x07, 0x08]; // "PK\x07\x08"
 
     if buffer == ZIP_MAGIC || buffer == ZIP_EMPTY_MAGIC || buffer == ZIP_SPANNED_MAGIC {
-        debug!("ZIP magic number validated");
         Ok(())
     } else {
-        warn!("Invalid ZIP magic number: {:?}", buffer);
-        Err(anyhow!("File is not a valid ZIP file"))
+        bail!("File is not a valid ZIP file");
     }
 }
 
@@ -246,48 +177,34 @@ pub fn validate_file_info(
     file_info: &crate::services::FileInfo,
     config: &SecurityConfig,
 ) -> Result<()> {
-    let _span = crate::logging::security_validation_span("file_info");
-
     validate_file_size(file_info.size, config)?;
-
     validate_file_extension(&file_info.name, config)?;
-
-    debug!("File info validation passed for: {}", file_info.name);
     Ok(())
 }
 
 pub fn validate_downloaded_file(
-    file_path: &Path,
+    file: &mut File,
     file_info: &crate::services::FileInfo,
     config: &SecurityConfig,
 ) -> Result<()> {
-    let _span = crate::logging::security_validation_span("downloaded_file");
+    validate_zip_magic_number(file)?;
+    validate_zip_file(file, config)?;
 
-    validate_zip_magic_number(file_path)?;
-
-    validate_zip_file(file_path, config)?;
-
-    let actual_size = std::fs::metadata(file_path)
-        .map_err(|e| anyhow!("IO error: {}", e))?
-        .len();
+    let actual_size = file.metadata()?.len();
     if actual_size != file_info.size {
-        warn!(
-            "File size mismatch: expected {}, got {}",
-            file_info.size, actual_size
-        );
-        return Err(anyhow!(
+        bail!(
             "File size mismatch: expected {}, got {}",
             file_info.size,
             actual_size
-        ));
+        );
     }
-
-    debug!("Downloaded file validation passed");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::FileInfo;
+
     use super::*;
     use std::time::Duration;
 
@@ -322,22 +239,6 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_url_security() {
-        assert!(validate_url_is_https("https://example.com").is_ok());
-        assert!(validate_url_is_https("http://example.com").is_err());
-        assert!(validate_url_is_https("ftp://example.com").is_err());
-    }
-
-    #[test]
-    fn test_validate_content_type() {
-        assert!(validate_content_type(Some("application/zip")).is_ok());
-        assert!(validate_content_type(Some("application/x-zip-compressed")).is_ok());
-        assert!(validate_content_type(Some("application/octet-stream")).is_ok());
-        assert!(validate_content_type(Some("text/plain")).is_err());
-        assert!(validate_content_type(None).is_err());
-    }
-
-    #[test]
     fn test_validate_zip_entry_path() {
         assert!(validate_zip_entry_path("normal/path/file.txt").is_ok());
         assert!(validate_zip_entry_path("../../../etc/passwd").is_err());
@@ -346,17 +247,15 @@ mod tests {
         assert!(validate_zip_entry_path("C:\\windows\\path").is_err());
     }
 
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+    use zip::write::{FileOptions, ZipWriter};
+
     #[test]
     fn test_create_test_zip() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-        use zip::write::{FileOptions, ZipWriter};
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
-        // Create a test ZIP file
-        let temp_file = NamedTempFile::new().unwrap();
-        let mut zip = ZipWriter::new(temp_file.reopen().unwrap());
-
-        // Add a small file
         zip.start_file("test.txt", FileOptions::<()>::default())
             .unwrap();
         zip.write_all(b"Hello, world!").unwrap();
@@ -364,18 +263,13 @@ mod tests {
 
         // Test with default config - should pass
         let config = SecurityConfig::default();
-        assert!(validate_zip_file(temp_file.path(), &config).is_ok());
+        assert!(validate_zip_file(temp_file.as_file_mut(), &config).is_ok());
     }
 
     #[test]
     fn test_zip_validation_too_many_entries() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-        use zip::write::{FileOptions, ZipWriter};
-
-        // Create a test ZIP file with multiple entries
-        let temp_file = NamedTempFile::new().unwrap();
-        let mut zip = ZipWriter::new(temp_file.reopen().unwrap());
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
         // Add 5 files
         for i in 0..5 {
@@ -387,7 +281,7 @@ mod tests {
 
         // Test with very low limit - should fail
         let config = SecurityConfig::new().max_zip_entries(3);
-        let result = validate_zip_file(temp_file.path(), &config);
+        let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -398,13 +292,8 @@ mod tests {
 
     #[test]
     fn test_zip_validation_file_too_large() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-        use zip::write::{FileOptions, ZipWriter};
-
-        // Create a test ZIP file with a larger file
-        let temp_file = NamedTempFile::new().unwrap();
-        let mut zip = ZipWriter::new(temp_file.reopen().unwrap());
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
         zip.start_file("large.txt", FileOptions::<()>::default())
             .unwrap();
@@ -414,7 +303,7 @@ mod tests {
 
         // Test with very low size limit - should fail
         let config = SecurityConfig::new().max_extracted_size(1000); // 1KB limit
-        let result = validate_zip_file(temp_file.path(), &config);
+        let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("size 2000 exceeds maximum 1000"));
@@ -422,15 +311,9 @@ mod tests {
 
     #[test]
     fn test_zip_validation_total_size_exceeded() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-        use zip::write::{FileOptions, ZipWriter};
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
-        // Create a test ZIP file with multiple files
-        let temp_file = NamedTempFile::new().unwrap();
-        let mut zip = ZipWriter::new(temp_file.reopen().unwrap());
-
-        // Add 3 files of 800 bytes each = 2400 bytes total
         for i in 0..3 {
             zip.start_file(&format!("file{}.txt", i), FileOptions::<()>::default())
                 .unwrap();
@@ -439,9 +322,8 @@ mod tests {
         }
         zip.finish().unwrap();
 
-        // Test with total size limit of 2000 bytes - should fail
         let config = SecurityConfig::new().max_extracted_size(2000);
-        let result = validate_zip_file(temp_file.path(), &config);
+        let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -452,13 +334,8 @@ mod tests {
 
     #[test]
     fn test_zip_validation_path_traversal() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-        use zip::write::{FileOptions, ZipWriter};
-
-        // Create a test ZIP file with path traversal
-        let temp_file = NamedTempFile::new().unwrap();
-        let mut zip = ZipWriter::new(temp_file.reopen().unwrap());
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
         zip.start_file("../../../etc/passwd", FileOptions::<()>::default())
             .unwrap();
@@ -467,7 +344,7 @@ mod tests {
 
         // Should fail due to path traversal
         let config = SecurityConfig::default();
-        let result = validate_zip_file(temp_file.path(), &config);
+        let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Path traversal attempt detected"));
@@ -475,14 +352,12 @@ mod tests {
 
     #[test]
     fn test_security_error_types() {
-        use crate::services::FileInfo;
-
         let config = SecurityConfig::new().max_file_size(100);
 
         let large_file_info = FileInfo {
             name: "test.zip".to_string(),
             size: 200,
-            mime_type: Some("application/zip".to_string()),
+            is_zip: true,
         };
 
         let result = validate_file_info(&large_file_info, &config);
