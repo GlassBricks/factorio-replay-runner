@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
-members = [ "crates/cli", "crates/gdrive-downloader", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
+members = [ "crates/cli", "crates/dropbox-downloader", "crates/gdrive-downloader", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
 
 [workspace.dependencies]
 anyhow = "1.0"
 async-process = "2.4.0"
 async-trait = "0.1.88"
 clap = { version = "4.5.41", features = ["derive"] }
-futures = "0.3.31"
+futures = { version = "0.3.31", features = ["compat"] }
 glob = "0.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"

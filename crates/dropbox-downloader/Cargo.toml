@@ -1,0 +1,21 @@
+[package]
+name = "dropbox-downloader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+dropbox-sdk = { version = "0.19.1", features = ["async_routes", "default_async_client", "dbx_files"] }
+futures = { workspace = true, features = ["compat"] }
+regex = { workspace = true }
+run-downloader = { path = "../run-downloader" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { version = "0.7.16", features = ["compat"] }
+zip = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
