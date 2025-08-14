@@ -1,0 +1,19 @@
+[package]
+name = "gdrive-downloader"
+version = "0.1.0"
+edition = "2021"
+
+
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait.workspace = true
+regex.workspace = true
+reqwest = { workspace = true }
+run-downloader = { version = "0.1.0", path = "../run-downloader" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile.workspace = true
+tokio = { workspace = true }
+yup-oauth2 = "12.1.0"
+zip.workspace = true

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "crates/cli", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
+members = [ "crates/cli", "crates/gdrive-downloader", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
 
 [workspace.dependencies]
 anyhow = "1.0"
