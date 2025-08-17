@@ -139,9 +139,7 @@ mod tests {
     async fn test_create_and_read_save_file() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
 
-        factorio.delete_saves_dir().ok();
-
-        let _file = factorio.create_save_file("test_save")?;
+        factorio.create_save_file("test_save")?;
 
         let saves_path = factorio.install_dir().join("saves").join("test_save.zip");
         assert!(saves_path.exists());

@@ -8,7 +8,7 @@ use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::{fs::File, io::Write};
-use tokio::io::AsyncWriteExt;
+
 use yup_oauth2::{
     AccessToken, ServiceAccountAuthenticator, ServiceAccountKey,
     authenticator::DefaultAuthenticator,

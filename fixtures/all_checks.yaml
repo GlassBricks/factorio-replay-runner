@@ -1,5 +1,5 @@
 expected_mods: SpaceAge
-checks:
+replay_checks:
   check_console_commands: true
   first_rocket_launched: true
   no_blueprint_import: true

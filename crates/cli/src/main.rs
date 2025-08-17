@@ -1,21 +1,37 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
+use log::{error, info};
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
-    replay_runner::{ReplayLog, RunResult, run_replay_with_rules},
-    rules::Rules,
+    replay_runner::{ReplayLog, RunResult},
+    rules::RunRules,
     save_file::SaveFile,
 };
-use std::io::Write;
+use replay_script::MsgType;
+use run::run_replay;
 use std::{
     fs::File,
     path::{Path, PathBuf},
 };
 
+mod run;
+
 #[derive(Parser)]
 #[command(name = "factorio-replay-cli")]
 #[command(about = "Run Factorio replays with custom scripts and analyze the results")]
-struct Args {
+struct CliArgs {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Run(RunReplayOnFileArgs),
+    RunSrc(RunReplayFromSrcArgs),
+}
+
+#[derive(Args)]
+struct RunReplayOnFileArgs {
     /// Factorio save file
     save_file: PathBuf,
 
@@ -23,7 +39,7 @@ struct Args {
     rules_file: PathBuf,
 
     /// Factorio installations directory (defaults to ./factorio_installs)
-    /// Installs will created at install_dir/{version}/
+    /// Installs will created at {install_dir}/{version}/
     #[arg(long, default_value = "./factorio_installs")]
     install_dir: PathBuf,
 
@@ -32,94 +48,152 @@ struct Args {
     output: Option<PathBuf>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let args = Args::parse();
+#[derive(Args)]
+struct RunReplayFromSrcArgs {
+    /// Rules directory
+    rules_dir: PathBuf,
 
-    if !args.save_file.exists() {
-        anyhow::bail!("Save file does not exist: {}", args.save_file.display());
-    }
-    if !args.rules_file.exists() {
-        anyhow::bail!("Rules file does not exist: {}", args.rules_file.display());
-    }
+    /// Factorio installations directory (defaults to ./factorio_installs)
+    /// Installs will created at {install_dir}/{version}/
+    #[arg(long, default_value = "./factorio_installs")]
+    install_dir: PathBuf,
 
-    println!("Running replay: {}", args.save_file.display());
-    println!("Using rules from: {}", args.rules_file.display());
-    println!("Factorio install dir: {}", args.install_dir.display());
+    /// Output path; defaults to ./src_runs
+    /// Files will be written to {output_dir}/{run_id}/
+    ///     {save_name}.zip
+    ///     {log}.txt
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
 
-    let output_path = args
-        .output
-        .unwrap_or_else(|| args.save_file.with_extension("txt"));
-
-    let result = run_replay_on_file(
-        &args.save_file,
-        &args.rules_file,
-        &args.install_dir,
-        &output_path,
-    )
-    .await?;
-
-    let success = match result {
-        RunResult::PreRunCheckFailed(err) => {
-            println!("Pre-run check failed: {}", err);
-            false
-        }
-        RunResult::ReplayRan(replay_log) => {
-            if replay_log.exit_success {
-                println!("Replay completed successfully!");
-            } else {
-                println!("Replay failed!");
-            }
-            summarize_results(&replay_log, &output_path);
-            replay_log.exit_success
-        }
-    };
-
-    if !success {
-        std::process::exit(1);
-    }
-
+fn init_logger() -> Result<()> {
+    use simplelog::*;
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            File::create("factorio-replay-cli.log").unwrap(),
+        ),
+    ])?;
     Ok(())
 }
 
-fn summarize_results(replay_log: &ReplayLog, replay_log_path: &Path) {
-    println!("Results written to: {}", replay_log_path.display());
-    println!("{} log messages", replay_log.messages.len());
+#[tokio::main]
+async fn main() -> Result<()> {
+    init_logger()?;
+    let args = CliArgs::parse();
 
-    let mut info_count = 0;
-    let mut warn_count = 0;
-    let mut error_count = 0;
+    let exit_code = match args.command {
+        Commands::Run(sub_args) => cli_run_file(sub_args).await,
+        Commands::RunSrc(_) => todo!(),
+    }?;
 
-    for msg in &replay_log.messages {
-        match msg.msg_type {
-            replay_script::MsgType::Info => info_count += 1,
-            replay_script::MsgType::Warn => warn_count += 1,
-            replay_script::MsgType::Error => error_count += 1,
-        }
-    }
-
-    let result = if error_count > 0 {
-        "err"
-    } else if warn_count > 0 {
-        "warn"
-    } else {
-        "ok"
-    };
-
-    println!("Overall result: {result}");
-    println!("Summary: {error_count} errors, {warn_count} warnings, {info_count} info messages");
+    std::process::exit(exit_code);
 }
 
-async fn run_replay_on_file(
+/// Exit codes:
+/// 0: Success
+/// 1: Warning
+/// 2: Error
+/// 10: replay run error
+async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
+    let RunReplayOnFileArgs {
+        save_file,
+        rules_file,
+        install_dir,
+        output,
+    } = args;
+    let output_path = output.unwrap_or_else(|| save_file.with_extension("log"));
+    let result = run_replay_from_paths(&save_file, &rules_file, &install_dir, &output_path).await?;
+    let exit_code = match result {
+        RunResult::PreRunCheckFailed(err) => {
+            error!("Pre-run check failed: {}", err);
+            1
+        }
+        RunResult::ReplayRan(replay_log) => {
+            if replay_log.exit_success {
+                info!("Replay completed successfully!");
+            } else {
+                info!("Replay failed!");
+            }
+            let result_code = get_result(&replay_log, &output_path);
+            if replay_log.exit_success {
+                result_code
+            } else {
+                10
+            }
+        }
+    };
+
+    Ok(exit_code)
+}
+
+async fn run_replay_from_paths(
+    save_file: &Path,
+    rules_file: &Path,
+    install_dir: &Path,
+    output: &Path,
+) -> Result<RunResult> {
+    anyhow::ensure!(
+        save_file.exists(),
+        "Save file does not exist: {}",
+        save_file.display()
+    );
+    anyhow::ensure!(
+        rules_file.exists(),
+        "Rules file does not exist: {}",
+        rules_file.display()
+    );
+    anyhow::ensure!(
+        install_dir.exists(),
+        "Factorio install dir does not exist: {}",
+        install_dir.display()
+    );
+
+    info!("Running replay: {}", save_file.display());
+    info!("Using rules from: {}", rules_file.display());
+    info!("Factorio install dir: {}", install_dir.display());
+
+    let (install_dir, mut save_file, rules) =
+        load_replay_inputs(save_file, rules_file, install_dir).await?;
+    run_replay(install_dir, &mut save_file, &rules, &output).await
+}
+
+fn get_result(replay_log: &ReplayLog, replay_log_path: &Path) -> i32 {
+    info!("Results written to: {}", replay_log_path.display());
+
+    if replay_log
+        .messages
+        .iter()
+        .any(|msg| msg.msg_type == MsgType::Error)
+    {
+        return 1;
+    }
+    if replay_log
+        .messages
+        .iter()
+        .any(|msg| msg.msg_type == MsgType::Warn)
+    {
+        return 2;
+    }
+    return 0;
+}
+
+async fn load_replay_inputs(
     save_file_path: &Path,
     rules_file_path: &Path,
     install_dir_path: &Path,
-    output_path: &Path,
-) -> Result<RunResult> {
+) -> Result<(FactorioInstallDir, SaveFile<File>, RunRules)> {
     let save_file_handle = File::open(save_file_path)
         .with_context(|| format!("Failed to open save file: {}", save_file_path.display()))?;
 
-    let mut save_file = SaveFile::new(save_file_handle)
+    let save_file = SaveFile::new(save_file_handle)
         .with_context(|| format!("Failed to load save file: {}", save_file_path.display()))?;
 
     let install_dir = FactorioInstallDir::new_or_create(install_dir_path).with_context(|| {
@@ -132,50 +206,42 @@ async fn run_replay_on_file(
     let reader = File::open(rules_file_path)
         .with_context(|| format!("Failed to open rules file: {}", rules_file_path.display()))?;
 
-    let rules: Rules = serde_yaml::from_reader(reader).with_context(|| {
+    let rules: RunRules = serde_yaml::from_reader(reader).with_context(|| {
         format!(
             "Failed to parse rules file as YAML: {}",
             rules_file_path.display()
         )
     })?;
 
-    let result = run_replay_with_rules(&install_dir, &mut save_file, &rules)
-        .await
-        .context("Failed to run replay with rules")?;
-
-    if let RunResult::ReplayRan(ref replay_log) = result {
-        write_replay_log(replay_log, output_path).context("Failed to write replay log")?;
-    }
-
-    Ok(result)
-}
-
-fn write_replay_log(
-    replay_log: &replay_runner::replay_runner::ReplayLog,
-    output_path: &Path,
-) -> Result<()> {
-    let mut file = File::create(output_path)
-        .with_context(|| format!("Failed to create output file: {}", output_path.display()))?;
-
-    for msg in &replay_log.messages {
-        writeln!(file, "[{}] {} {}", msg.msg_type, msg.time, msg.message)
-            .context("Failed to write message to output file")?;
-    }
-
-    Ok(())
+    Ok((install_dir, save_file, rules))
 }
 
 #[cfg(test)]
 mod tests {
-    use replay_runner::rules::ExpectedMods;
+    use replay_runner::expected_mods::ExpectedMods;
     use replay_script::ReplayScripts;
     use test_utils;
 
     use super::*;
     use std::fs;
 
+    fn write_all_rules_to_fixtures() {
+        let fixtures_dir = test_utils::fixtures_dir();
+        let all_scripts = ReplayScripts::all_enabled();
+        let test_all_rules = RunRules {
+            expected_mods: ExpectedMods::SpaceAge,
+            replay_checks: all_scripts,
+        };
+
+        let rules_yaml = serde_yaml::to_string(&test_all_rules).unwrap();
+        fs::write(fixtures_dir.join("all_checks.yaml"), rules_yaml).unwrap();
+    }
+
     #[tokio::test]
-    async fn test_run_replay_with_all_rules() -> Result<()> {
+    #[ignore]
+    async fn test_run_file() -> Result<()> {
+        write_all_rules_to_fixtures();
+
         let test_dir = test_utils::test_tmp_dir().join("cli_test");
         let fixtures_dir = test_utils::fixtures_dir();
         let install_dir_path = test_utils::test_factorio_installs_dir();
@@ -186,10 +252,10 @@ mod tests {
         fs::create_dir_all(&test_dir)?;
 
         let test_save_path = fixtures_dir.join("TEST.zip");
-        let rules_file_path = fixtures_dir.join("all_rules.yaml");
+        let rules_file_path = fixtures_dir.join("all_checks.yaml");
         let output_path = test_dir.join("TEST.txt");
 
-        let result = run_replay_on_file(
+        let result = run_replay_from_paths(
             &test_save_path,
             &rules_file_path,
             &install_dir_path,
@@ -225,20 +291,5 @@ mod tests {
         );
 
         Ok(())
-    }
-
-    #[test]
-    #[ignore]
-    fn write_all_rules_to_fixtures() {
-        let fixtures_dir = test_utils::fixtures_dir();
-        let all_scripts = ReplayScripts::all_enabled();
-        let test_all_rules = Rules {
-            expected_mods: ExpectedMods::SpaceAge,
-            checks: all_scripts,
-        };
-
-        let rules_yaml_path = fixtures_dir.join("all_rules.yaml");
-        let rules_yaml = serde_yaml::to_string(&test_all_rules).unwrap();
-        fs::write(rules_yaml_path, rules_yaml).unwrap();
     }
 }
