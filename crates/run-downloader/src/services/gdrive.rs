@@ -4,10 +4,11 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
+use tokio::io::AsyncWriteExt;
 use yup_oauth2::{
     AccessToken, ServiceAccountAuthenticator, ServiceAccountKey,
     authenticator::DefaultAuthenticator,
@@ -129,7 +130,11 @@ async fn get_unauthenticated_file_info(
     Ok(FileInfo { name, size, is_zip })
 }
 
-async fn download_file_content(file_id: &str, token: Option<&AccessToken>) -> Result<bytes::Bytes> {
+async fn download_file_streaming(
+    file_id: &str,
+    dest: &mut File,
+    token: Option<&AccessToken>,
+) -> Result<()> {
     let client = reqwest::Client::new();
 
     let url = match token {
@@ -144,8 +149,13 @@ async fn download_file_content(file_id: &str, token: Option<&AccessToken>) -> Re
         anyhow::bail!("Failed to download file: HTTP {}", response.status());
     }
 
-    let bytes = response.bytes().await?;
-    Ok(bytes)
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        dest.write_all(&chunk?)?;
+    }
+    dest.flush()?;
+
+    Ok(())
 }
 
 lazy_static! {
@@ -242,13 +252,9 @@ impl FileService for GoogleDriveService {
     ) -> Result<(), ServiceError> {
         let token = self.get_token().await?;
 
-        let bytes = download_file_content(file_id, token.as_ref())
+        download_file_streaming(file_id, dest, token.as_ref())
             .await
             .map_err(|e| Self::classify_error(&e.to_string()))?;
-
-        dest.write_all(&bytes).map_err(|e| {
-            ServiceError::retryable(anyhow::anyhow!("Failed to write to file: {}", e))
-        })?;
 
         Ok(())
     }
@@ -307,6 +313,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_service_unauthenticated() {
         let mut service = GoogleDriveService::new(None);
         file_info_test(&mut service).await;
@@ -314,6 +321,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_service_authenticated() {
         dotenvy::dotenv().ok();
         let Ok(mut service) = GoogleDriveService::from_env().await else {

@@ -14,7 +14,7 @@ reqwest = { workspace = true }
 serde_yaml = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
+log = { workspace = true }
 zip = { workspace = true }
 dotenvy = { workspace = true }
 dropbox-sdk = { workspace = true }

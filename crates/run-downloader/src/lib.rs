@@ -8,8 +8,8 @@ use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileInfo, FileService};
 
 use anyhow::Result;
+use log::{error, info};
 use tempfile::NamedTempFile;
-use tracing::{error, info};
 
 /// Result of a successful download operation
 #[derive(Debug)]

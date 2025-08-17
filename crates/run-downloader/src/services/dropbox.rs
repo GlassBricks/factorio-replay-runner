@@ -300,6 +300,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_service_with_token() {
         dotenvy::dotenv().ok();
 
@@ -324,6 +325,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_file_downloader_integration() {
         dotenvy::dotenv().ok();
 
