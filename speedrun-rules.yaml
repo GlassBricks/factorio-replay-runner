@@ -4,8 +4,9 @@ games:
       7dggqegd: # Steel axe
         expected_mods: Base
         replay_checks:
-          check_console_commands: false
-          first_rocket_launched: false
-          no_blueprint_import: false
-          no_map_editor: false
-          open_other_player: false
+          disable_all: true
+          # check_console_commands: false
+          # first_rocket_launched: false
+          # no_blueprint_import: false
+          # no_map_editor: false
+          # open_other_player: false

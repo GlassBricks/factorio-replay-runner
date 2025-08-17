@@ -8,25 +8,33 @@ macro_rules! generate_replay_scripts {
         pub struct ReplayScripts {
             $(#[serde(default)]
             pub $file_name: bool,)*
+
+            #[serde(default)]
+            pub disable_all: bool
         }
 
         impl ReplayScripts {
             pub fn all_enabled() -> Self {
                 Self {
                     $($file_name: true,)*
+                    disable_all: false
                 }
             }
         }
 
         impl std::fmt::Display for ReplayScripts {
             fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-                fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/main.lua")))?;
-                $(
-                    if self.$file_name {
-                        writeln!(fmt, "-- Script for {}", stringify!($file_name))?;
-                        fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/rules/", stringify!($file_name), ".lua")))?;
-                    }
-                )*
+                if self.disable_all {
+                    fmt.write_str("-- All replay scripts are disabled\n")?;
+                } else {
+                    fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/main.lua")))?;
+                    $(
+                        if self.$file_name {
+                            writeln!(fmt, "-- Script for {}", stringify!($file_name))?;
+                            fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/rules/", stringify!($file_name), ".lua")))?;
+                        }
+                    )*
+                }
                 Ok(())
             }
         }
