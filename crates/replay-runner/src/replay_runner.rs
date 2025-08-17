@@ -26,7 +26,7 @@ pub enum ReplayError {
     Other(#[from] anyhow::Error),
 }
 
-pub type RunResult = Result<ReplayLog, ReplayError>;
+pub type ReplayResult = Result<ReplayLog, ReplayError>;
 impl FactorioInstance {
     fn spawn_replay(&self, save_name: &str) -> Result<FactorioProcess> {
         self.spawn(&["--run-replay", save_name])
@@ -93,7 +93,7 @@ pub async fn run_replay_with_rules(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<impl Read + Seek>,
     rules: &RunRules,
-) -> RunResult {
+) -> ReplayResult {
     let version = save_file.get_factorio_version()?;
     let mut instance = install_dir.get_or_download_factorio(version).await?;
 

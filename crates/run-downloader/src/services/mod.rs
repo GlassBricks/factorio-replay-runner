@@ -6,9 +6,8 @@ use std::fs::File;
 pub mod dropbox;
 pub mod gdrive;
 
-/// Information about a file from a sharing service
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileInfo {
+pub struct FileMeta {
     pub name: String,
     pub size: u64,
     pub is_zip: bool,
@@ -21,14 +20,14 @@ pub trait FileService: Send + Sync {
 
     fn detect_link(input: &str) -> Option<Self::FileId>;
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo>;
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta>;
 
     async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()>;
 }
 
 #[async_trait]
 pub trait FileDownloadHandle: Send + Sync + Display {
-    async fn get_file_info(&mut self) -> Result<FileInfo>;
+    async fn get_file_info(&mut self) -> Result<FileMeta>;
     async fn download(&mut self, dest: &mut File) -> Result<()>;
     fn service_name(&self) -> &str;
 }
@@ -46,7 +45,7 @@ struct FileIdWrapper<'a, T: FileService> {
 
 #[async_trait]
 impl<'a, T: FileService> FileDownloadHandle for FileIdWrapper<'a, T> {
-    async fn get_file_info(&mut self) -> Result<FileInfo> {
+    async fn get_file_info(&mut self) -> Result<FileMeta> {
         self.service.get_file_info(&self.file_id).await
     }
     async fn download(&mut self, dest: &mut File) -> Result<()> {
@@ -96,8 +95,8 @@ pub mod test_util {
             Ok(())
         }
 
-        async fn get_file_info(&mut self, _file_id: &Self::FileId) -> Result<FileInfo> {
-            Ok(FileInfo {
+        async fn get_file_info(&mut self, _file_id: &Self::FileId) -> Result<FileMeta> {
+            Ok(FileMeta {
                 name: "test.zip".to_string(),
                 size: 1000,
                 is_zip: true,

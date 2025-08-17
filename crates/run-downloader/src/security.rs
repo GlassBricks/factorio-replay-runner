@@ -123,7 +123,7 @@ fn validate_zip_magic_number(file: &mut File) -> Result<()> {
 }
 
 pub fn validate_file_info(
-    file_info: &crate::services::FileInfo,
+    file_info: &crate::services::FileMeta,
     config: &SecurityConfig,
 ) -> Result<()> {
     validate_file_name(file_info.name.as_str())?;
@@ -146,7 +146,7 @@ fn validate_file_name(as_str: &str) -> Result<()> {
 
 pub fn validate_downloaded_file(
     file: &mut File,
-    file_info: &crate::services::FileInfo,
+    file_info: &crate::services::FileMeta,
     config: &SecurityConfig,
 ) -> Result<()> {
     validate_zip_magic_number(file)?;
@@ -165,7 +165,7 @@ pub fn validate_downloaded_file(
 
 #[cfg(test)]
 mod tests {
-    use crate::FileInfo;
+    use crate::FileMeta;
 
     use super::*;
 
@@ -375,7 +375,7 @@ mod tests {
             ..Default::default()
         };
 
-        let large_file_info = FileInfo {
+        let large_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 200,
             is_zip: true,

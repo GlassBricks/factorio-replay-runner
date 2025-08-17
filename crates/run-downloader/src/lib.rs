@@ -1,15 +1,23 @@
 pub mod security;
 pub mod services;
 
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 pub use security::SecurityConfig;
 use services::{FileDownloadHandle, FileServiceDyn};
-pub use services::{FileInfo, FileService};
+pub use services::{FileMeta, FileService};
 
 use anyhow::Result;
 use log::{error, info};
 use tempfile::NamedTempFile;
+
+pub struct DownloadedFile {
+    pub name: String,
+    pub path: PathBuf,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
@@ -93,7 +101,7 @@ impl FileDownloader {
         &mut self,
         input: &str,
         out_file_or_path: &Path,
-    ) -> Result<FileInfo, DownloadError> {
+    ) -> Result<DownloadedFile, DownloadError> {
         let result = self.do_download_zip(input, out_file_or_path).await;
         match &result {
             Ok(zip) => info!(
@@ -109,17 +117,17 @@ impl FileDownloader {
     pub async fn download_zip_to_temp(
         &mut self,
         input: &str,
-    ) -> Result<(NamedTempFile, FileInfo), DownloadError> {
+    ) -> Result<(NamedTempFile, DownloadedFile), DownloadError> {
         let temp_file = NamedTempFile::new()?;
-        let file_info = self.download_zip(input, temp_file.path()).await?;
-        Ok((temp_file, file_info))
+        let downloaded_file = self.download_zip(input, temp_file.path()).await?;
+        Ok((temp_file, downloaded_file))
     }
 
     async fn do_download_zip(
         &mut self,
         input: &str,
         out_file: &Path,
-    ) -> Result<FileInfo, DownloadError> {
+    ) -> Result<DownloadedFile, DownloadError> {
         info!("Starting download");
 
         let mut download_handle = Self::get_download_handle(&mut self.services, input)?;
@@ -154,7 +162,10 @@ impl FileDownloader {
         security::validate_downloaded_file(&mut reopened_file, &file_info, &self.security_config)
             .map_err(|err| DownloadError::SecurityError(err.into()))?;
 
-        Ok(file_info)
+        Ok(DownloadedFile {
+            name: file_info.name,
+            path: file_path,
+        })
     }
 
     fn get_download_handle<'a>(
@@ -212,7 +223,7 @@ mod tests {
     fn test_validate_file_info() {
         let security_config = SecurityConfig::default();
 
-        let valid_file_info = FileInfo {
+        let valid_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 1000,
             is_zip: true,
@@ -220,7 +231,7 @@ mod tests {
 
         assert!(security::validate_file_info(&valid_file_info, &security_config).is_ok());
 
-        let too_large_file_info = FileInfo {
+        let too_large_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 200 * 1024 * 1024, // Larger than default 100MB limit
             is_zip: true,

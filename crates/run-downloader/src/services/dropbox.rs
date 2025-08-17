@@ -1,4 +1,4 @@
-use crate::{FileInfo, services::FileService};
+use crate::{FileMeta, services::FileService};
 use anyhow::Result;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
@@ -54,7 +54,7 @@ impl DropboxFileId {
     }
 }
 
-async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileInfo> {
+async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta> {
     #[expect(deprecated)]
     let auth = Authorization::from_long_lived_access_token(token.to_string());
     let client = UserAuthDefaultClient::new(auth);
@@ -69,7 +69,7 @@ async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileInfo>
     match metadata {
         SharedLinkMetadata::File(file_meta) => {
             let is_zip = file_meta.name.to_lowercase().ends_with(".zip");
-            Ok(FileInfo {
+            Ok(FileMeta {
                 name: file_meta.name,
                 size: file_meta.size,
                 is_zip,
@@ -159,7 +159,7 @@ impl FileService for DropboxService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
         let token = self.ensure_token().await?;
         get_file_info(file_id, &token).await
     }
@@ -316,8 +316,6 @@ mod tests {
         match downloader.download_zip_to_temp(test_url).await {
             Ok((file, info)) => {
                 assert_eq!(info.name, "foo.zip");
-                assert_eq!(info.size, 119);
-                assert!(info.is_zip);
                 assert!(file.path().exists());
 
                 let metadata = std::fs::metadata(file.path()).unwrap();

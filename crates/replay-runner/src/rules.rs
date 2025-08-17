@@ -5,12 +5,12 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
 pub struct SrcRunRules {
-    games: HashMap<String, GameRules>,
+    pub games: HashMap<String, GameRules>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct GameRules {
-    categories: HashMap<String, CategoryRules>,
+    pub categories: HashMap<String, CategoryRules>,
 }
 
 /// The same as RunRules for now

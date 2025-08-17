@@ -1,4 +1,4 @@
-use crate::services::{FileInfo, FileService};
+use crate::services::{FileMeta, FileService};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -58,7 +58,7 @@ async fn get_authenticated_file_info(
     client: &reqwest::Client,
     file_id: &str,
     token: &AccessToken,
-) -> Result<FileInfo> {
+) -> Result<FileMeta> {
     use serde::Deserialize;
 
     #[derive(Deserialize)]
@@ -79,7 +79,7 @@ async fn get_authenticated_file_info(
 
     let api_response: ApiResponse = response.json().await?;
 
-    Ok(FileInfo {
+    Ok(FileMeta {
         name: api_response.name,
         size: api_response.size.parse().unwrap_or(0),
         is_zip: api_response.mime_type.to_lowercase().contains("zip"),
@@ -89,7 +89,7 @@ async fn get_authenticated_file_info(
 async fn get_unauthenticated_file_info(
     client: &reqwest::Client,
     file_id: &str,
-) -> Result<FileInfo> {
+) -> Result<FileMeta> {
     let url = public_download_url(file_id);
     let response = client.head(&url).send().await?;
 
@@ -124,7 +124,7 @@ async fn get_unauthenticated_file_info(
         .unwrap_or(false)
         || name.to_lowercase().ends_with(".zip");
 
-    Ok(FileInfo { name, size, is_zip })
+    Ok(FileMeta { name, size, is_zip })
 }
 
 async fn download_file_streaming(
@@ -219,7 +219,7 @@ impl FileService for GoogleDriveService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
         let token = self.get_token().await?;
         let client = reqwest::Client::new();
 

@@ -3,24 +3,24 @@ use clap::{Args, Parser, Subcommand};
 use log::{error, info};
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
-    replay_runner::{ReplayLog, RunResult},
-    rules::{GameRules, RunRules},
+    replay_runner::{ReplayLog, ReplayResult},
+    rules::{RunRules, SrcRunRules},
     save_file::SaveFile,
 };
 use replay_script::MsgType;
-use run::run_replay;
 use run_downloader::{
     FileDownloader,
     services::{dropbox::DropboxService, gdrive::GoogleDriveService},
 };
-use src_integration::run_replay_from_src_run;
+use run_replay::run_replay;
+use src_integration::{RemoteReplayResult, run_replay_from_src_run};
 use std::{
     fmt::Display,
     fs::File,
     path::{Path, PathBuf},
 };
 
-mod run;
+mod run_replay;
 mod src_integration;
 
 #[derive(Parser)]
@@ -121,25 +121,21 @@ async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
     } = args;
     let output_path = output.unwrap_or_else(|| save_file.with_extension("log"));
 
-    let install_dir = load_install_dir(&install_dir).await?;
-    let mut save_file = load_save_file(&save_file).await?;
-    let rules = load_run_rules(&rules_file).await?;
-    let result = run_replay(install_dir, &mut save_file, &rules, &output_path).await;
+    let result = run_file(&save_file, &rules_file, &install_dir, &output_path).await;
     log_result(&result);
     Ok(result_to_exit_code(&result))
 }
 
-async fn run_replay_from_paths(
+async fn run_file(
     save_file: &Path,
     rules_file: &Path,
     install_dir: &Path,
-    output: &Path,
-) -> RunResult {
+    output_path: &Path,
+) -> ReplayResult {
     let install_dir = load_install_dir(install_dir).await?;
     let mut save_file = load_save_file(save_file).await?;
     let rules = load_run_rules(rules_file).await?;
-
-    run_replay(install_dir, &mut save_file, &rules, &output).await
+    run_replay(&install_dir, &mut save_file, &rules, output_path).await
 }
 
 async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
@@ -150,18 +146,31 @@ async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
         output_dir,
     } = args;
 
-    let install_dir = load_install_dir(&install_dir).await?;
-    let rules = load_game_rules(&game_rules_file).await?;
-
-    let mut downloader = create_file_downloader().await?;
-    let result =
-        run_replay_from_src_run(&mut downloader, &run_id, &install_dir, &rules, &output_dir).await;
-
+    let result = run_src(&run_id, &game_rules_file, &install_dir, &output_dir).await;
     log_result(&result);
     Ok(result_to_exit_code(&result))
 }
 
+async fn run_src(
+    run_id: &str,
+    game_rules_file: &Path,
+    install_dir: &Path,
+    output_dir: &Path,
+) -> RemoteReplayResult {
+    let install_dir = load_install_dir(install_dir).await?;
+    let rules = load_src_rules(game_rules_file).await?;
+    let mut downloader = create_file_downloader().await?;
+    run_replay_from_src_run(&mut downloader, run_id, &install_dir, &rules, output_dir).await
+}
+
 async fn create_file_downloader() -> Result<FileDownloader> {
+    dotenvy::dotenv()?;
+    if !std::env::var("AUTO_DOWNLOAD_RUNS").is_ok() {
+        panic!(
+            "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
+        );
+    }
+
     Ok(FileDownloader::builder()
         .add_service(GoogleDriveService::from_env().await?)
         .add_service(DropboxService::from_env().await?)
@@ -178,28 +187,16 @@ async fn load_install_dir(install_dir_path: &Path) -> Result<FactorioInstallDir>
 }
 
 async fn load_save_file(save_file_path: &Path) -> Result<SaveFile<File>> {
-    let save_file_handle = File::open(save_file_path)?;
-    SaveFile::new(save_file_handle)
+    SaveFile::new(File::open(save_file_path)?)
 }
 
 async fn load_run_rules(rules_file_path: &Path) -> Result<RunRules> {
     serde_yaml::from_reader(File::open(rules_file_path)?).with_context(|| "failed to load rules")
 }
 
-async fn load_game_rules(game_rules_file_path: &Path) -> Result<GameRules> {
-    let reader = File::open(game_rules_file_path).with_context(|| {
-        format!(
-            "Failed to open game rules file: {}",
-            game_rules_file_path.display()
-        )
-    })?;
-
-    serde_yaml::from_reader(reader).with_context(|| {
-        format!(
-            "Failed to parse game rules file as YAML: {}",
-            game_rules_file_path.display()
-        )
-    })
+async fn load_src_rules(game_rules_file_path: &Path) -> Result<SrcRunRules> {
+    serde_yaml::from_reader(File::open(game_rules_file_path)?)
+        .with_context(|| "failed to load src rules")
 }
 
 fn log_result(result: &Result<ReplayLog, impl Display>) {
@@ -284,7 +281,7 @@ mod tests {
         let rules_file_path = fixtures_dir.join("all_checks.yaml");
         let output_path = test_dir.join("TEST.txt");
 
-        let result = run_replay_from_paths(
+        let result = run_file(
             &test_save_path,
             &rules_file_path,
             &install_dir_path,

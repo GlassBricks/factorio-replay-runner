@@ -4,18 +4,18 @@ use anyhow::{Context, Result};
 use log::info;
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
-    replay_runner::{ReplayLog, RunResult, run_replay_with_rules},
+    replay_runner::{ReplayLog, ReplayResult, run_replay_with_rules},
     rules::RunRules,
     save_file::SaveFile,
 };
 
 pub async fn run_replay(
-    install_dir: FactorioInstallDir,
+    install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<File>,
     rules: &RunRules,
     output_path: &Path,
-) -> RunResult {
-    let log = run_replay_with_rules(&install_dir, save_file, rules).await?;
+) -> ReplayResult {
+    let log = run_replay_with_rules(install_dir, save_file, rules).await?;
     write_replay_log(&log, output_path).context("Failed to write replay log")?;
     Ok(log)
 }
