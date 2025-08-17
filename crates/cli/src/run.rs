@@ -1,6 +1,7 @@
 use std::{fs::File, io::Write, path::Path};
 
 use anyhow::{Context, Result};
+use log::info;
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
     replay_runner::{ReplayLog, RunResult, run_replay_with_rules},
@@ -27,5 +28,6 @@ fn write_replay_log(replay_log: &ReplayLog, output_path: &Path) -> Result<()> {
         writeln!(file, "[{}] {} {}", msg.msg_type, msg.time, msg.message)?
     }
 
+    info!("Results written to: {}", output_path.display());
     Ok(())
 }

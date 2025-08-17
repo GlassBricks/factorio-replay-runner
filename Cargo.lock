@@ -366,11 +366,13 @@ dependencies = [
  "log",
  "replay-runner",
  "replay-script",
+ "run-downloader",
  "serde",
  "serde_yaml",
  "simplelog",
  "speedrun-api",
  "test-utils",
+ "thiserror 2.0.12",
  "tokio",
 ]
 

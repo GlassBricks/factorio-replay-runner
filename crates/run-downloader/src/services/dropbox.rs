@@ -313,15 +313,14 @@ mod tests {
 
         let test_url = "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0";
 
-        match downloader.download_zip(test_url).await {
-            Ok(downloaded_zip) => {
-                assert_eq!(downloaded_zip.service_name, "dropbox");
-                assert_eq!(downloaded_zip.file_info.name, "foo.zip");
-                assert_eq!(downloaded_zip.file_info.size, 119);
-                assert!(downloaded_zip.file_info.is_zip);
-                assert!(downloaded_zip.file.path().exists());
+        match downloader.download_zip_to_temp(test_url).await {
+            Ok((file, info)) => {
+                assert_eq!(info.name, "foo.zip");
+                assert_eq!(info.size, 119);
+                assert!(info.is_zip);
+                assert!(file.path().exists());
 
-                let metadata = std::fs::metadata(downloaded_zip.file.path()).unwrap();
+                let metadata = std::fs::metadata(file.path()).unwrap();
                 assert_eq!(metadata.len(), 119);
             }
             Err(e) => {

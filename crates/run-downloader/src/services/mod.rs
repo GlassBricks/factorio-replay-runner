@@ -2,7 +2,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::fmt::{Debug, Display};
 use std::fs::File;
-use tempfile::NamedTempFile;
 
 pub mod dropbox;
 pub mod gdrive;
@@ -31,11 +30,6 @@ pub trait FileService: Send + Sync {
 pub trait FileDownloadHandle: Send + Sync + Display {
     async fn get_file_info(&mut self) -> Result<FileInfo>;
     async fn download(&mut self, dest: &mut File) -> Result<()>;
-    async fn download_to_tmp(&mut self) -> Result<NamedTempFile> {
-        let mut tmp_file = NamedTempFile::new()?;
-        self.download(tmp_file.as_file_mut()).await?;
-        Ok(tmp_file)
-    }
     fn service_name(&self) -> &str;
 }
 

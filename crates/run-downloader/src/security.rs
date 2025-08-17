@@ -1,4 +1,6 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::io::Read;
 use std::{fs::File, path::Path};
 
@@ -124,8 +126,21 @@ pub fn validate_file_info(
     file_info: &crate::services::FileInfo,
     config: &SecurityConfig,
 ) -> Result<()> {
+    validate_file_name(file_info.name.as_str())?;
     validate_file_size(file_info.size, config)?;
     validate_file_extension(&file_info.name, config)?;
+    Ok(())
+}
+
+lazy_static! {
+    static ref VALID_FILE_NAME_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+$").unwrap();
+}
+
+fn validate_file_name(as_str: &str) -> Result<()> {
+    ensure!(
+        VALID_FILE_NAME_REGEX.is_match(as_str),
+        "File name contains invalid characters"
+    );
     Ok(())
 }
 

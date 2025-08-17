@@ -7,13 +7,15 @@ edition = "2024"
 anyhow = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
-replay-runner = { path = "../replay-runner" }
-replay-script = {  path = "../replay-script" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 simplelog = "0.12.2"
 speedrun-api = "1.3.0"
+replay-runner = { path = "../replay-runner" }
+replay-script = {  path = "../replay-script" }
+run-downloader = { path = "../run-downloader" }
 
 [dev-dependencies]
 test-utils = { path = "../test-utils" }

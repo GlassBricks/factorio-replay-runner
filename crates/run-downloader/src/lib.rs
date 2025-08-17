@@ -1,6 +1,8 @@
 pub mod security;
 pub mod services;
 
+use std::{fs::File, path::Path};
+
 pub use security::SecurityConfig;
 use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileInfo, FileService};
@@ -8,14 +10,6 @@ pub use services::{FileInfo, FileService};
 use anyhow::Result;
 use log::{error, info};
 use tempfile::NamedTempFile;
-
-/// Result of a successful download operation
-#[derive(Debug)]
-pub struct DownloadedZip {
-    pub file: NamedTempFile,
-    pub file_info: FileInfo,
-    pub service_name: String,
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum DownloadError {
@@ -31,6 +25,12 @@ pub enum DownloadError {
     /// Considered fatal
     #[error("Other error: {0}")]
     Other(anyhow::Error),
+}
+
+impl From<std::io::Error> for DownloadError {
+    fn from(err: std::io::Error) -> Self {
+        DownloadError::Other(err.into())
+    }
 }
 
 type DynFileService = Box<dyn FileServiceDyn>;
@@ -89,26 +89,44 @@ impl FileDownloader {
         self.services.len()
     }
 
-    pub async fn download_zip(&mut self, input: &str) -> Result<DownloadedZip, DownloadError> {
-        let result = self.do_download_zip(input).await;
+    pub async fn download_zip(
+        &mut self,
+        input: &str,
+        out_file_or_path: &Path,
+    ) -> Result<FileInfo, DownloadError> {
+        let result = self.do_download_zip(input, out_file_or_path).await;
         match &result {
             Ok(zip) => info!(
-                "Successfully downloaded file to {}",
-                zip.file.path().display()
+                "Successfully downloaded {} to {}",
+                zip.name,
+                out_file_or_path.display()
             ),
             Err(err) => error!("Failed to download: {}", err),
         };
         result
     }
 
-    async fn do_download_zip(&mut self, input: &str) -> Result<DownloadedZip, DownloadError> {
+    pub async fn download_zip_to_temp(
+        &mut self,
+        input: &str,
+    ) -> Result<(NamedTempFile, FileInfo), DownloadError> {
+        let temp_file = NamedTempFile::new()?;
+        let file_info = self.download_zip(input, temp_file.path()).await?;
+        Ok((temp_file, file_info))
+    }
+
+    async fn do_download_zip(
+        &mut self,
+        input: &str,
+        out_file: &Path,
+    ) -> Result<FileInfo, DownloadError> {
         info!("Starting download");
 
-        let mut file_handle = Self::get_file_handle(&mut self.services, input)?;
-        info!("Found {file_handle}");
+        let mut download_handle = Self::get_download_handle(&mut self.services, input)?;
+        info!("Found {download_handle}");
 
         info!("Getting file info");
-        let file_info = file_handle
+        let file_info = download_handle
             .get_file_info()
             .await
             .map_err(DownloadError::ServiceError)?;
@@ -118,28 +136,28 @@ impl FileDownloader {
             .map_err(DownloadError::SecurityError)?;
 
         info!("Downloading file");
-        let file = file_handle
-            .download_to_tmp()
+
+        let file_path = if out_file.is_dir() {
+            out_file.join(file_info.name.as_str())
+        } else {
+            out_file.to_path_buf()
+        };
+
+        let mut file = File::create(&file_path)?;
+        download_handle
+            .download(&mut file)
             .await
             .map_err(|err| DownloadError::ServiceError(err.into()))?;
 
         info!("Running file checks");
-        let mut re_file = file
-            .reopen()
-            .map_err(|err| DownloadError::Other(err.into()))?;
-        security::validate_downloaded_file(&mut re_file, &file_info, &self.security_config)
+        let mut reopened_file = File::open(&file_path)?;
+        security::validate_downloaded_file(&mut reopened_file, &file_info, &self.security_config)
             .map_err(|err| DownloadError::SecurityError(err.into()))?;
 
-        let downloaded_run = DownloadedZip {
-            file,
-            file_info,
-            service_name: file_handle.service_name().to_string(),
-        };
-
-        Ok(downloaded_run)
+        Ok(file_info)
     }
 
-    fn get_file_handle<'a>(
+    fn get_download_handle<'a>(
         services: &'a mut [DynFileService],
         input: &str,
     ) -> Result<Box<dyn FileDownloadHandle + 'a>, DownloadError> {
@@ -185,7 +203,7 @@ mod tests {
     #[tokio::test]
     async fn test_no_links_detected() {
         let mut downloader = FileDownloader::builder().add_service(MockService).build();
-        let result = downloader.download_zip("no links here").await;
+        let result = downloader.download_zip_to_temp("no links here").await;
 
         assert!(matches!(result, Err(DownloadError::NoLinkFound)));
     }

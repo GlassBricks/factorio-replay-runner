@@ -97,7 +97,7 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<()>
 impl FactorioInstallDir {
     pub fn get_factorio(&self, version: VersionStr) -> Option<FactorioInstance> {
         let path = self.path.join(version.to_string()).join("factorio");
-        path.exists().then(|| FactorioInstance::new_canonical(path))
+        path.exists().then(|| FactorioInstance::new(path).unwrap())
     }
 
     pub async fn get_or_download_factorio(&self, version: VersionStr) -> Result<FactorioInstance> {

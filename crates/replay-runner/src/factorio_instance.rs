@@ -15,18 +15,8 @@ pub struct FactorioInstance {
 
 impl FactorioInstance {
     pub fn new(install_dir: PathBuf) -> Result<Self> {
-        let install_dir_abs = install_dir.canonicalize().with_context(|| {
-            format!(
-                "Failed to canonicalize install directory: {}",
-                install_dir.display()
-            )
-        })?;
+        let install_dir_abs = install_dir.canonicalize()?;
         Ok(FactorioInstance { install_dir_abs })
-    }
-
-    pub(crate) fn new_canonical(install_dir: PathBuf) -> Self {
-        let install_dir_abs = install_dir.canonicalize().unwrap();
-        FactorioInstance { install_dir_abs }
     }
 
     pub fn install_dir(&self) -> &Path {
