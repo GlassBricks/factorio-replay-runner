@@ -1,8 +1,5 @@
-use crate::{
-    ServiceError,
-    services::{FileInfo, FileService},
-};
-use anyhow::Result;
+use crate::services::{FileInfo, FileService};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -178,41 +175,30 @@ impl GoogleDriveService {
         }
     }
 
-    pub async fn from_env() -> anyhow::Result<Self> {
+    pub async fn from_env() -> Result<Self> {
         let service_account_key = read_service_account_key_from_env().await?;
         Ok(Self::new(Some(service_account_key)))
     }
 
-    async fn get_authenticator(&mut self) -> Result<Option<&DefaultAuthenticator>, ServiceError> {
+    async fn get_authenticator(&mut self) -> Result<Option<&DefaultAuthenticator>> {
         if self.authenticator.is_none() && self.service_account_key.is_some() {
             let authenticator =
                 ServiceAccountAuthenticator::builder(self.service_account_key.clone().unwrap())
                     .build()
-                    .await
-                    .map_err(ServiceError::retryable)?;
+                    .await?;
             self.authenticator = Some(authenticator);
         }
         Ok(self.authenticator.as_ref())
     }
 
-    async fn get_token(&mut self) -> Result<Option<AccessToken>, ServiceError> {
+    async fn get_token(&mut self) -> Result<Option<AccessToken>> {
         let Some(auth) = self.get_authenticator().await? else {
             return Ok(None);
         };
         auth.token(&[DRIVE_READONLY_SCOPE])
             .await
             .map(Some)
-            .map_err(ServiceError::retryable)
-    }
-
-    fn classify_error(error_msg: &str) -> ServiceError {
-        if error_msg.contains("403") || error_msg.contains("401") {
-            ServiceError::retryable(anyhow::anyhow!("{}", error_msg))
-        } else if error_msg.contains("404") {
-            ServiceError::fatal(anyhow::anyhow!("{}", error_msg))
-        } else {
-            ServiceError::retryable(anyhow::anyhow!("{}", error_msg))
-        }
+            .with_context(|| "Getting g_drive auth token")
     }
 }
 
@@ -233,30 +219,20 @@ impl FileService for GoogleDriveService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo, ServiceError> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo> {
         let token = self.get_token().await?;
         let client = reqwest::Client::new();
 
-        let result = match token.as_ref() {
+        match token.as_ref() {
             Some(token) => get_authenticated_file_info(&client, file_id, token).await,
             None => get_unauthenticated_file_info(&client, file_id).await,
-        };
-
-        result.map_err(|e| Self::classify_error(&e.to_string()))
+        }
     }
 
-    async fn download(
-        &mut self,
-        file_id: &Self::FileId,
-        dest: &mut File,
-    ) -> Result<(), ServiceError> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()> {
         let token = self.get_token().await?;
 
-        download_file_streaming(file_id, dest, token.as_ref())
-            .await
-            .map_err(|e| Self::classify_error(&e.to_string()))?;
-
-        Ok(())
+        download_file_streaming(file_id, dest, token.as_ref()).await
     }
 }
 

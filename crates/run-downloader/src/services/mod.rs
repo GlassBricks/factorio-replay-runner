@@ -1,4 +1,4 @@
-use crate::error::ServiceError;
+use anyhow::Result;
 use async_trait::async_trait;
 use std::fmt::{Debug, Display};
 use std::fs::File;
@@ -22,25 +22,17 @@ pub trait FileService: Send + Sync {
 
     fn detect_link(input: &str) -> Option<Self::FileId>;
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo, ServiceError>;
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo>;
 
-    async fn download(
-        &mut self,
-        file_id: &Self::FileId,
-        dest: &mut File,
-    ) -> Result<(), ServiceError>;
+    async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()>;
 }
 
 #[async_trait]
 pub trait FileDownloadHandle: Send + Sync + Display {
-    async fn get_file_info(&mut self) -> Result<FileInfo, ServiceError>;
-    async fn download(&mut self, dest: &mut File) -> Result<(), ServiceError>;
-    async fn download_to_tmp(&mut self) -> Result<NamedTempFile, ServiceError> {
-        let Ok(mut tmp_file) = NamedTempFile::new() else {
-            return Err(ServiceError::retryable(anyhow::anyhow!(
-                "Failed to create temporary file"
-            )));
-        };
+    async fn get_file_info(&mut self) -> Result<FileInfo>;
+    async fn download(&mut self, dest: &mut File) -> Result<()>;
+    async fn download_to_tmp(&mut self) -> Result<NamedTempFile> {
+        let mut tmp_file = NamedTempFile::new()?;
         self.download(tmp_file.as_file_mut()).await?;
         Ok(tmp_file)
     }
@@ -60,10 +52,10 @@ struct FileIdWrapper<'a, T: FileService> {
 
 #[async_trait]
 impl<'a, T: FileService> FileDownloadHandle for FileIdWrapper<'a, T> {
-    async fn get_file_info(&mut self) -> Result<FileInfo, ServiceError> {
+    async fn get_file_info(&mut self) -> Result<FileInfo> {
         self.service.get_file_info(&self.file_id).await
     }
-    async fn download(&mut self, dest: &mut File) -> Result<(), ServiceError> {
+    async fn download(&mut self, dest: &mut File) -> Result<()> {
         self.service.download(&self.file_id, dest).await
     }
     fn service_name(&self) -> &str {
@@ -106,18 +98,11 @@ pub mod test_util {
             "mock"
         }
 
-        async fn download(
-            &mut self,
-            _file_id: &Self::FileId,
-            _dest: &mut File,
-        ) -> Result<(), ServiceError> {
+        async fn download(&mut self, _file_id: &Self::FileId, _dest: &mut File) -> Result<()> {
             Ok(())
         }
 
-        async fn get_file_info(
-            &mut self,
-            _file_id: &Self::FileId,
-        ) -> Result<FileInfo, ServiceError> {
+        async fn get_file_info(&mut self, _file_id: &Self::FileId) -> Result<FileInfo> {
             Ok(FileInfo {
                 name: "test.zip".to_string(),
                 size: 1000,

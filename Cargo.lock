@@ -1744,11 +1744,13 @@ dependencies = [
  "async-process",
  "futures 0.3.31",
  "itertools",
+ "log",
  "replay-script",
  "serde",
  "serde_yaml",
  "tempfile",
  "test-utils",
+ "thiserror 2.0.12",
  "tokio",
  "zip",
 ]

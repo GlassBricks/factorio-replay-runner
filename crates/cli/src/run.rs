@@ -13,16 +13,10 @@ pub async fn run_replay(
     save_file: &mut SaveFile<File>,
     rules: &RunRules,
     output_path: &Path,
-) -> Result<RunResult> {
-    let result = run_replay_with_rules(&install_dir, save_file, rules)
-        .await
-        .context("Failed to run replay with rules")?;
-
-    if let RunResult::ReplayRan(ref replay_log) = result {
-        write_replay_log(replay_log, output_path).context("Failed to write replay log")?;
-    }
-
-    Ok(result)
+) -> RunResult {
+    let log = run_replay_with_rules(&install_dir, save_file, rules).await?;
+    write_replay_log(&log, output_path).context("Failed to write replay log")?;
+    Ok(log)
 }
 
 fn write_replay_log(replay_log: &ReplayLog, output_path: &Path) -> Result<()> {
@@ -30,8 +24,7 @@ fn write_replay_log(replay_log: &ReplayLog, output_path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to create output file: {}", output_path.display()))?;
 
     for msg in &replay_log.messages {
-        writeln!(file, "[{}] {} {}", msg.msg_type, msg.time, msg.message)
-            .context("Failed to write message to output file")?;
+        writeln!(file, "[{}] {} {}", msg.msg_type, msg.time, msg.message)?
     }
 
     Ok(())

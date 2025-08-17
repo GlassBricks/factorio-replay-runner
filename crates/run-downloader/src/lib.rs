@@ -1,8 +1,6 @@
-pub mod error;
 pub mod security;
 pub mod services;
 
-pub use error::{DownloadError, ServiceError};
 pub use security::SecurityConfig;
 use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileInfo, FileService};
@@ -17,6 +15,22 @@ pub struct DownloadedZip {
     pub file: NamedTempFile,
     pub file_info: FileInfo,
     pub service_name: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DownloadError {
+    #[error("No valid download link found in input")]
+    NoLinkFound,
+
+    #[error("Security violation: {0}")]
+    SecurityError(anyhow::Error),
+
+    #[error("Service error (retryable): {0}")]
+    ServiceError(anyhow::Error),
+
+    /// Considered fatal
+    #[error("Other error: {0}")]
+    Other(anyhow::Error),
 }
 
 type DynFileService = Box<dyn FileServiceDyn>;
@@ -94,19 +108,27 @@ impl FileDownloader {
         info!("Found {file_handle}");
 
         info!("Getting file info");
-        let file_info = file_handle.get_file_info().await?;
+        let file_info = file_handle
+            .get_file_info()
+            .await
+            .map_err(DownloadError::ServiceError)?;
 
         info!("Running initial checks");
-        security::validate_file_info(&file_info, &self.security_config)?;
+        security::validate_file_info(&file_info, &self.security_config)
+            .map_err(DownloadError::SecurityError)?;
 
         info!("Downloading file");
-        let file = file_handle.download_to_tmp().await?;
+        let file = file_handle
+            .download_to_tmp()
+            .await
+            .map_err(|err| DownloadError::ServiceError(err.into()))?;
 
         info!("Running file checks");
         let mut re_file = file
             .reopen()
             .map_err(|err| DownloadError::Other(err.into()))?;
-        security::validate_downloaded_file(&mut re_file, &file_info, &self.security_config)?;
+        security::validate_downloaded_file(&mut re_file, &file_info, &self.security_config)
+            .map_err(|err| DownloadError::SecurityError(err.into()))?;
 
         let downloaded_run = DownloadedZip {
             file,

@@ -1,4 +1,4 @@
-use crate::{FileInfo, ServiceError, services::FileService};
+use crate::{FileInfo, services::FileService};
 use anyhow::Result;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
@@ -133,25 +133,10 @@ impl DropboxService {
         Ok(Self::new(Some(token)))
     }
 
-    async fn ensure_token(&self) -> Result<String, ServiceError> {
+    async fn ensure_token(&self) -> Result<String> {
         match &self.token {
             Some(token) => Ok(token.clone()),
-            None => read_dropbox_token_from_env()
-                .await
-                .map_err(|e| ServiceError::fatal(e)),
-        }
-    }
-
-    fn classify_error(error_msg: &str) -> ServiceError {
-        if error_msg.contains("401")
-            || error_msg.contains("403")
-            || error_msg.contains("unauthorized")
-        {
-            ServiceError::retryable(anyhow::anyhow!("{}", error_msg))
-        } else if error_msg.contains("404") || error_msg.contains("not_found") {
-            ServiceError::fatal(anyhow::anyhow!("{}", error_msg))
-        } else {
-            ServiceError::retryable(anyhow::anyhow!("{}", error_msg))
+            None => read_dropbox_token_from_env().await,
         }
     }
 }
@@ -174,24 +159,14 @@ impl FileService for DropboxService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo, ServiceError> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileInfo> {
         let token = self.ensure_token().await?;
-
-        get_file_info(file_id, &token)
-            .await
-            .map_err(|e| Self::classify_error(&e.to_string()))
+        get_file_info(file_id, &token).await
     }
 
-    async fn download(
-        &mut self,
-        file_id: &Self::FileId,
-        dest: &mut File,
-    ) -> Result<(), ServiceError> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()> {
         let token = self.ensure_token().await?;
-
-        download_file(file_id, dest, &token)
-            .await
-            .map_err(|e| Self::classify_error(&e.to_string()))
+        download_file(file_id, dest, &token).await
     }
 }
 

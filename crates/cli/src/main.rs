@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use log::{error, info};
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
-    replay_runner::{ReplayLog, RunResult},
+    replay_runner::{ReplayError, ReplayLog, RunResult},
     rules::RunRules,
     save_file::SaveFile,
 };
@@ -110,21 +110,21 @@ async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
         output,
     } = args;
     let output_path = output.unwrap_or_else(|| save_file.with_extension("log"));
-    let result = run_replay_from_paths(&save_file, &rules_file, &install_dir, &output_path).await?;
+    let result = run_replay_from_paths(&save_file, &rules_file, &install_dir, &output_path).await;
     let exit_code = match result {
-        RunResult::PreRunCheckFailed(err) => {
-            error!("Pre-run check failed: {}", err);
+        Err(err) => {
+            error!("{err}");
             1
         }
-        RunResult::ReplayRan(replay_log) => {
+        Ok(replay_log) => {
             if replay_log.exit_success {
                 info!("Replay completed successfully!");
             } else {
                 info!("Replay failed!");
             }
-            let result_code = get_result(&replay_log, &output_path);
+            info!("Results written to: {}", output_path.display());
             if replay_log.exit_success {
-                result_code
+                get_result_exit_code(&replay_log)
             } else {
                 10
             }
@@ -134,40 +134,7 @@ async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
     Ok(exit_code)
 }
 
-async fn run_replay_from_paths(
-    save_file: &Path,
-    rules_file: &Path,
-    install_dir: &Path,
-    output: &Path,
-) -> Result<RunResult> {
-    anyhow::ensure!(
-        save_file.exists(),
-        "Save file does not exist: {}",
-        save_file.display()
-    );
-    anyhow::ensure!(
-        rules_file.exists(),
-        "Rules file does not exist: {}",
-        rules_file.display()
-    );
-    anyhow::ensure!(
-        install_dir.exists(),
-        "Factorio install dir does not exist: {}",
-        install_dir.display()
-    );
-
-    info!("Running replay: {}", save_file.display());
-    info!("Using rules from: {}", rules_file.display());
-    info!("Factorio install dir: {}", install_dir.display());
-
-    let (install_dir, mut save_file, rules) =
-        load_replay_inputs(save_file, rules_file, install_dir).await?;
-    run_replay(install_dir, &mut save_file, &rules, &output).await
-}
-
-fn get_result(replay_log: &ReplayLog, replay_log_path: &Path) -> i32 {
-    info!("Results written to: {}", replay_log_path.display());
-
+fn get_result_exit_code(replay_log: &ReplayLog) -> i32 {
     if replay_log
         .messages
         .iter()
@@ -183,6 +150,51 @@ fn get_result(replay_log: &ReplayLog, replay_log_path: &Path) -> i32 {
         return 2;
     }
     return 0;
+}
+
+macro_rules! replay_bail {
+    ( $($args:tt)* ) => {
+        return Err(ReplayError::Other(anyhow::anyhow!($($args)*)));
+    };
+}
+
+macro_rules! replay_ensure {
+    ( $cond:expr, $($args:tt)* ) => {
+        if !$cond {
+            replay_bail!($($args)*);
+        }
+    };
+}
+
+async fn run_replay_from_paths(
+    save_file: &Path,
+    rules_file: &Path,
+    install_dir: &Path,
+    output: &Path,
+) -> RunResult {
+    replay_ensure!(
+        save_file.exists(),
+        "Save file does not exist: {}",
+        save_file.display()
+    );
+    replay_ensure!(
+        rules_file.exists(),
+        "Rules file does not exist: {}",
+        rules_file.display()
+    );
+    replay_ensure!(
+        install_dir.exists(),
+        "Factorio install dir does not exist: {}",
+        install_dir.display()
+    );
+
+    info!("Running replay: {}", save_file.display());
+    info!("Using rules from: {}", rules_file.display());
+    info!("Factorio install dir: {}", install_dir.display());
+
+    let (install_dir, mut save_file, rules) =
+        load_replay_inputs(save_file, rules_file, install_dir).await?;
+    run_replay(install_dir, &mut save_file, &rules, &output).await
 }
 
 async fn load_replay_inputs(
@@ -263,14 +275,7 @@ mod tests {
         )
         .await?;
 
-        let replay_log = match result {
-            RunResult::ReplayRan(log) => log,
-            RunResult::PreRunCheckFailed(err) => {
-                panic!("Pre-run check failed: {}", err);
-            }
-        };
-
-        assert!(replay_log.exit_success, "Replay should exit successfully");
+        assert!(result.exit_success, "Replay should exit successfully");
 
         assert!(output_path.exists(), "Output file should be created");
 

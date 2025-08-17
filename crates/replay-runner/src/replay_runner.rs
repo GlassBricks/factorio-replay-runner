@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use futures::io::AsyncBufReadExt;
+use log::info;
 use replay_script::ReplayMsg;
 use std::io::{Read, Seek};
 use std::str::FromStr;
+use thiserror::Error;
 
 use crate::expected_mods::check_expected_mods;
 use crate::factorio_install_dir::FactorioInstallDir;
@@ -15,11 +17,16 @@ pub struct ReplayLog {
     pub exit_success: bool,
 }
 
-pub enum RunResult {
+#[derive(Error, Debug)]
+pub enum ReplayError {
+    #[error("Pre-run check failed: {0}")]
     PreRunCheckFailed(anyhow::Error),
-    ReplayRan(ReplayLog),
+
+    #[error("Other error: {0}")]
+    Other(#[from] anyhow::Error),
 }
 
+pub type RunResult = Result<ReplayLog, ReplayError>;
 impl FactorioInstance {
     fn spawn_replay(&self, save_name: &str) -> Result<FactorioProcess> {
         self.spawn(&["--run-replay", save_name])
@@ -86,11 +93,11 @@ pub async fn run_replay_with_rules(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<impl Read + Seek>,
     rules: &RunRules,
-) -> Result<RunResult> {
+) -> RunResult {
     let version = save_file.get_factorio_version()?;
     let mut instance = install_dir.get_or_download_factorio(version).await?;
 
-    println!("Performing pre-run checks");
+    info!("Performing pre-run checks");
     instance.delete_saves_dir()?;
     instance.add_save_with_installed_replay_script(save_file, "")?;
 
@@ -99,13 +106,13 @@ pub async fn run_replay_with_rules(
         .await
         .context("Failed to get mod versions")?;
 
-    if let Err(err) = check_expected_mods(&rules.expected_mods, &mod_versions) {
-        return Ok(RunResult::PreRunCheckFailed(err));
-    }
+    check_expected_mods(&rules.expected_mods, &mod_versions)
+        .map_err(ReplayError::PreRunCheckFailed)?;
 
-    println!("Pre-run checks passed, running replay");
+    info!("Pre-run checks passed, running replay");
     let replay_script = rules.replay_checks.to_string();
     let replay_log = run_replay_internal(&instance, save_file, &replay_script).await?;
 
-    Ok(RunResult::ReplayRan(replay_log))
+    info!("Replay completed");
+    Ok(replay_log)
 }
