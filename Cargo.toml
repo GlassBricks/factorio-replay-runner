@@ -1,11 +1,12 @@
 [workspace]
 resolver = "3"
-members = [ "crates/cli", "crates/dropbox-downloader", "crates/gdrive-downloader", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
+members = [ "crates/cli", "crates/replay-runner", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
 
 [workspace.dependencies]
 anyhow = "1.0"
 async-process = "2.4.0"
 async-trait = "0.1.88"
+bytes = "1.10.1"
 clap = { version = "4.5.41", features = ["derive"] }
 dotenvy = "0.15.7"
 dropbox-sdk = { version = "0.19.1", features = ["async_routes", "default_async_client", "dbx_files"] }

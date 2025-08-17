@@ -100,10 +100,13 @@ impl FileDownloader {
         security::validate_file_info(&file_info, &self.security_config)?;
 
         info!("Downloading file");
-        let mut file = file_handle.download_to_tmp().await?;
+        let file = file_handle.download_to_tmp().await?;
 
         info!("Running file checks");
-        security::validate_downloaded_file(file.as_file_mut(), &file_info, &self.security_config)?;
+        let mut re_file = file
+            .reopen()
+            .map_err(|err| DownloadError::Other(err.into()))?;
+        security::validate_downloaded_file(&mut re_file, &file_info, &self.security_config)?;
 
         let downloaded_run = DownloadedZip {
             file,

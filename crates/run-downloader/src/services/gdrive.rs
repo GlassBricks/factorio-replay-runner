@@ -1,11 +1,11 @@
+use crate::{
+    ServiceError,
+    services::{FileInfo, FileService},
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
-use run_downloader::{
-    ServiceError,
-    services::{FileInfo, FileService},
-};
 use std::fs::File;
 use std::io::Write;
 use yup_oauth2::{

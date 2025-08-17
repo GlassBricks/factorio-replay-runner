@@ -4,6 +4,9 @@ use std::fmt::{Debug, Display};
 use std::fs::File;
 use tempfile::NamedTempFile;
 
+pub mod dropbox;
+pub mod gdrive;
+
 /// Information about a file from a sharing service
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileInfo {

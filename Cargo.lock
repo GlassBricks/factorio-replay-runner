@@ -496,21 +496,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
-name = "dropbox-downloader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "dropbox-sdk",
- "lazy_static",
- "regex",
- "run-downloader",
- "tempfile",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "dropbox-sdk"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -736,26 +721,6 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
-]
-
-[[package]]
-name = "gdrive-downloader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "dotenvy",
- "lazy_static",
- "regex",
- "reqwest",
- "run-downloader",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "yup-oauth2",
- "zip",
 ]
 
 [[package]]
@@ -1700,15 +1665,21 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
+ "dotenvy",
+ "dropbox-sdk",
  "futures 0.3.31",
  "lazy_static",
  "regex",
  "reqwest",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
+ "yup-oauth2",
  "zip",
 ]
 

@@ -91,7 +91,7 @@ fn validate_zip_file(file: &mut File, config: &SecurityConfig) -> Result<()> {
         .map_err(|e| anyhow!("IO error: {}", e))?;
 
     if buffer != [0x50, 0x4b, 0x03, 0x04] {
-        return Err(anyhow!("Invalid ZIP magic number"));
+        bail!("Invalid ZIP magic number");
     }
 
     let mut archive =
