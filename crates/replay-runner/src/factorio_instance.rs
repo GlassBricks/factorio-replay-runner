@@ -2,6 +2,7 @@ use crate::save_file::SaveFile;
 use anyhow::{Context, Result};
 use async_process::{Child, Command};
 use futures::io::{AsyncReadExt, BufReader};
+use log::debug;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 use std::{
@@ -51,18 +52,21 @@ impl FactorioInstance {
     }
 
     pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess> {
-        let child = self
-            .new_run_command()
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .args(args)
-            .spawn()?;
+        let mut cmd = self.new_run_command();
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).args(args);
 
+        debug!("Launching: {:?}", cmd);
+
+        let child = cmd.spawn().with_context(|| "Launching factorio")?;
+        debug!("Spawned Factorio process with PID {}", child.id());
         Ok(FactorioProcess::new(child))
     }
 
-    pub fn get_output(&self, args: &[&str]) -> impl Future<Output = io::Result<Output>> {
-        self.new_run_command().args(args).output()
+    pub async fn get_output(&self, args: &[&str]) -> Result<Output> {
+        let mut cmd = self.new_run_command();
+        cmd.args(args);
+        debug!("Running: {:?}", &cmd);
+        cmd.output().await.with_context(|| "Running factorio")
     }
 }
 

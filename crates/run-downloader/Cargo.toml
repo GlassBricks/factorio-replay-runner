@@ -11,7 +11,6 @@ futures = { workspace = true }
 lazy_static = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
-serde_yaml = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
@@ -19,7 +18,6 @@ zip = { workspace = true }
 dotenvy = { workspace = true }
 dropbox-sdk = { workspace = true }
 tokio-util = { workspace = true }
-bytes = { workspace = true }
 serde = { workspace = true }
 yup-oauth2 = { workspace = true }
 

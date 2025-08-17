@@ -48,10 +48,7 @@ mod tests {
 
     fn create_base_only_mods() -> ModVersions {
         let mut mods = HashMap::new();
-        mods.insert(
-            "base".to_string(),
-            VersionStr::try_from("2.0.15".to_string()).unwrap(),
-        );
+        mods.insert("base".to_string(), None);
         mods
     }
 
@@ -59,20 +56,11 @@ mod tests {
         let mut mods = HashMap::new();
         mods.insert(
             "base".to_string(),
-            VersionStr::try_from("2.0.15".to_string()).unwrap(),
+            VersionStr::try_from("2.0.15".to_string()).ok(),
         );
-        mods.insert(
-            "space-age".to_string(),
-            VersionStr::try_from("2.0.15".to_string()).unwrap(),
-        );
-        mods.insert(
-            "quality".to_string(),
-            VersionStr::try_from("2.0.15".to_string()).unwrap(),
-        );
-        mods.insert(
-            "elevated-rails".to_string(),
-            VersionStr::try_from("2.0.15".to_string()).unwrap(),
-        );
+        mods.insert("space-age".to_string(), None);
+        mods.insert("quality".to_string(), None);
+        mods.insert("elevated-rails".to_string(), None);
         mods
     }
 
@@ -98,7 +86,7 @@ mod tests {
         let mut actual = create_base_only_mods();
         actual.insert(
             "some-extra-mod".to_string(),
-            VersionStr::try_from("1.0.0".to_string()).unwrap(),
+            VersionStr::try_from("1.0.0".to_string()).ok(),
         );
 
         assert!(check_expected_mods(&expected, &actual).is_err());

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::info;
 use replay_runner::rules::{RunRules, SrcRunRules};
 use replay_runner::save_file::SaveFile;
 use run_downloader::FileDownloader;
@@ -24,8 +25,10 @@ pub async fn run_replay_from_src_run(
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)?;
 
+    info!("Fetching run data ( https://speedrun.com/runs/{} )", run_id);
     let run = fetch_src_run(run_id).await?;
     let run_rules = select_rules(&run, &rules)?;
+    info!("Downloading run");
     let mut save_file = download_run_from_description(downloader, &working_dir, run).await?;
 
     let output_path = working_dir.join("output.log");

@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use log::trace;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -14,10 +15,10 @@ struct ModList {
 struct ModOption {
     name: String,
     enabled: bool,
-    version: String,
+    version: Option<String>,
 }
 
-pub type ModVersions = HashMap<String, VersionStr>;
+pub type ModVersions = HashMap<String, Option<VersionStr>>;
 
 impl FactorioInstance {
     fn read_mod_list(&self) -> Result<Vec<ModOption>> {
@@ -30,14 +31,19 @@ impl FactorioInstance {
     pub async fn get_mod_versions(&mut self, save_name: &str) -> Result<ModVersions> {
         self.get_output(&["--sync-mods", save_name]).await?;
 
+        trace!("Synced mods with command");
+
         let mod_versions = self
-            .read_mod_list()?
+            .read_mod_list()
+            .with_context(|| "Reading mod-list.json")?
             .into_iter()
             .filter(|mod_option| mod_option.enabled)
             .filter_map(|mod_option| {
                 Some((
                     mod_option.name,
-                    VersionStr::try_from(mod_option.version).ok()?,
+                    mod_option
+                        .version
+                        .and_then(|version| VersionStr::try_from(version).ok()),
                 ))
             })
             .collect::<HashMap<_, _>>();

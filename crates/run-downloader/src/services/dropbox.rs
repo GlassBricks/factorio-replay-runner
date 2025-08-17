@@ -11,7 +11,7 @@ use dropbox_sdk::{
     async_routes::sharing::{get_shared_link_file, get_shared_link_metadata},
     default_async_client::UserAuthDefaultClient,
     oauth2::Authorization,
-    sharing::{GetSharedLinkFileArg, GetSharedLinkMetadataArg, SharedLinkMetadata},
+    sharing::{GetSharedLinkFileArg, SharedLinkMetadata},
 };
 
 const DROPBOX_TOKEN_ENV: &str = "DROPBOX_TOKEN";
@@ -23,34 +23,26 @@ pub async fn read_dropbox_token_from_env() -> Result<String> {
 
 lazy_static! {
     static ref DROPBOX_URL_PATTERNS: [Regex; 2] = [
-        Regex::new(r"https://(?:www\.)?dropbox\.com/scl/fi/[^/]+/[^?]+(?:\?[^#]*)?").unwrap(),
-        Regex::new(r"https://(?:www\.)?dropbox\.com/s/[^/]+/[^?]+(?:\?[^#]*)?").unwrap(),
+        Regex::new(r"https://(?:www\.)?dropbox\.com/scl/fi/[^/]+/[^?\s]+(?:\?[^\s#]*)?").unwrap(),
+        Regex::new(r"https://(?:www\.)?dropbox\.com/s/[^/]+/[^?\s]+(?:\?[^\s#]*)?").unwrap(),
     ];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DropboxFileId {
-    pub url: String,
-    pub password: Option<String>,
+pub struct DropboxFileId(GetSharedLinkFileArg);
+impl DropboxFileId {
+    pub fn new(arg: String) -> Self {
+        Self(GetSharedLinkFileArg::new(arg))
+    }
+
+    pub fn inner(&self) -> &GetSharedLinkFileArg {
+        &self.0
+    }
 }
 
 impl std::fmt::Display for DropboxFileId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.url)
-    }
-}
-
-impl DropboxFileId {
-    pub fn new(url: String) -> Self {
-        Self {
-            url,
-            password: None,
-        }
-    }
-
-    pub fn with_password(mut self, password: String) -> Self {
-        self.password = Some(password);
-        self
+        write!(f, "{}", self.0.url)
     }
 }
 
@@ -59,11 +51,7 @@ async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta>
     let auth = Authorization::from_long_lived_access_token(token.to_string());
     let client = UserAuthDefaultClient::new(auth);
 
-    let mut arg = GetSharedLinkMetadataArg::new(file_id.url.clone());
-    if let Some(password) = &file_id.password {
-        arg = arg.with_link_password(password.clone());
-    }
-
+    let arg = file_id.inner();
     let metadata = get_shared_link_metadata(&client, &arg).await?;
 
     match metadata {
@@ -76,10 +64,13 @@ async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta>
             })
         }
         SharedLinkMetadata::Folder(_) => {
-            anyhow::bail!("Expected file but got folder at URL: {}", file_id.url)
+            anyhow::bail!(
+                "Expected file but got folder at URL: {}",
+                file_id.inner().url
+            )
         }
         _ => {
-            anyhow::bail!("Unexpected metadata type for URL: {}", file_id.url)
+            anyhow::bail!("Unexpected metadata type for URL: {}", file_id.inner().url)
         }
     }
 }
@@ -89,12 +80,7 @@ async fn download_file(file_id: &DropboxFileId, dest: &mut File, token: &str) ->
     let auth = Authorization::from_long_lived_access_token(token.to_string());
     let client = UserAuthDefaultClient::new(auth);
 
-    let mut arg = GetSharedLinkFileArg::new(file_id.url.clone());
-    if let Some(password) = &file_id.password {
-        arg = arg.with_link_password(password.clone());
-    }
-
-    let response = get_shared_link_file(&client, &arg, None, None).await?;
+    let response = get_shared_link_file(&client, file_id.inner(), None, None).await?;
 
     if let Some(reader) = response.body {
         let mut compat_reader = reader.compat();
@@ -151,11 +137,9 @@ impl FileService for DropboxService {
 
     fn detect_link(input: &str) -> Option<Self::FileId> {
         DROPBOX_URL_PATTERNS.iter().find_map(|pattern| {
-            if pattern.is_match(input) {
-                Some(DropboxFileId::new(input.to_string()))
-            } else {
-                None
-            }
+            pattern
+                .find(input)
+                .map(|m| DropboxFileId::new(m.as_str().to_string()))
         })
     }
 
@@ -172,19 +156,25 @@ impl FileService for DropboxService {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::FileDownloader;
 
+    const TEST_URL: &str = "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0";
+
     #[test]
     fn test_detect_link() {
+        const TEST_URL_2: &str = "https://www.dropbox.com/s/abc123/test.zip?dl=0";
         let test_cases = [
+            (TEST_URL, Some(DropboxFileId::new(TEST_URL.to_string()))),
+            (TEST_URL_2, Some(DropboxFileId::new(TEST_URL_2.to_string()))),
             (
-                "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0",
-                Some(DropboxFileId::new("https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0".to_string())),
+                &format!("Check out this link : {} It do be cool", TEST_URL),
+                Some(DropboxFileId::new(TEST_URL.to_string())),
             ),
             (
-                "https://www.dropbox.com/s/abc123/test.zip?dl=0",
-                Some(DropboxFileId::new("https://www.dropbox.com/s/abc123/test.zip?dl=0".to_string())),
+                &format!("Check out this link : {} It do be cool", TEST_URL_2),
+                Some(DropboxFileId::new(TEST_URL_2.to_string())),
             ),
             ("https://example.com/not-a-dropbox-link", None),
             ("just some text", None),
@@ -192,56 +182,6 @@ mod tests {
 
         for (input, expected) in test_cases {
             assert_eq!(DropboxService::detect_link(input), expected);
-        }
-    }
-
-    #[test]
-    fn test_dropbox_file_id() {
-        let url = "https://www.dropbox.com/s/abc123/test.zip?dl=0".to_string();
-        let file_id = DropboxFileId::new(url.clone());
-        assert_eq!(file_id.url, url);
-        assert_eq!(file_id.password, None);
-
-        let file_id_with_password = file_id.with_password("secret".to_string());
-        assert_eq!(file_id_with_password.url, url);
-        assert_eq!(file_id_with_password.password, Some("secret".to_string()));
-    }
-
-    #[test]
-    fn test_dropbox_file_id_display() {
-        let url = "https://www.dropbox.com/s/abc123/test.zip?dl=0".to_string();
-        let file_id = DropboxFileId::new(url.clone());
-        assert_eq!(format!("{}", file_id), url);
-
-        let file_id_with_password = file_id.with_password("secret".to_string());
-        assert_eq!(format!("{}", file_id_with_password), url);
-    }
-
-    #[test]
-    fn test_detect_link_with_various_formats() {
-        let test_cases = [
-            (
-                "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0",
-                true,
-            ),
-            ("https://www.dropbox.com/s/abc123/test.zip?dl=0", true),
-            ("https://dropbox.com/s/abc123/test.zip?dl=1", true),
-            (
-                "https://dropbox.com/scl/fi/xyz789/example.zip?rlkey=abc&dl=0",
-                true,
-            ),
-            ("https://google.com/file.zip", false),
-            ("https://dropbox.com/invalid/path", false),
-        ];
-
-        for (url, should_match) in test_cases {
-            let result = DropboxService::detect_link(url);
-            if should_match {
-                assert!(result.is_some(), "Should detect URL: {}", url);
-                assert_eq!(result.unwrap().url, url);
-            } else {
-                assert!(result.is_none(), "Should not detect URL: {}", url);
-            }
         }
     }
 
@@ -263,10 +203,7 @@ mod tests {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())?;
-        service
-            .download(&file_id, &mut file)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        service.download(&file_id, &mut file).await?;
 
         assert!(temp_file.path().exists());
         let metadata = std::fs::metadata(temp_file.path())?;
@@ -284,17 +221,14 @@ mod tests {
             return;
         };
 
-        let test_url = "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0";
-
-        match file_info_test(&mut service, test_url).await {
+        match file_info_test(&mut service, TEST_URL).await {
             Ok(_) => {
-                let _ = download_test(&mut service, test_url).await;
+                download_test(&mut service, TEST_URL).await.unwrap();
             }
             Err(_) => {
                 eprintln!(
-                    "Test failed - likely due to missing sharing.read scope in Dropbox app configuration"
+                    "Test failed - likely due to expired token or missing sharing.read scope"
                 );
-                eprintln!("This is expected if the app was configured for files.content.read only");
             }
         }
     }
@@ -311,9 +245,7 @@ mod tests {
 
         let mut downloader = FileDownloader::builder().add_service(service).build();
 
-        let test_url = "https://www.dropbox.com/scl/fi/aw5ohfvtfoc2nnn4nl2n6/foo.zip?rlkey=1sholbp5uxq15dk0ke5ljtwsz&st=gpkdzloy&dl=0";
-
-        match downloader.download_zip_to_temp(test_url).await {
+        match downloader.download_zip_to_temp(TEST_URL).await {
             Ok((file, info)) => {
                 assert_eq!(info.name, "foo.zip");
                 assert!(file.path().exists());

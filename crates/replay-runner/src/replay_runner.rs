@@ -4,7 +4,6 @@ use log::info;
 use replay_script::ReplayMsg;
 use std::io::{Read, Seek};
 use std::str::FromStr;
-use thiserror::Error;
 
 use crate::expected_mods::check_expected_mods;
 use crate::factorio_install_dir::FactorioInstallDir;
@@ -17,16 +16,6 @@ pub struct ReplayLog {
     pub exit_success: bool,
 }
 
-#[derive(Error, Debug)]
-pub enum ReplayError {
-    #[error("Pre-run check failed: {0}")]
-    PreRunCheckFailed(anyhow::Error),
-
-    #[error("Other error: {0}")]
-    Other(#[from] anyhow::Error),
-}
-
-pub type ReplayResult = Result<ReplayLog, ReplayError>;
 impl FactorioInstance {
     fn spawn_replay(&self, save_name: &str) -> Result<FactorioProcess> {
         self.spawn(&["--run-replay", save_name])
@@ -93,7 +82,7 @@ pub async fn run_replay_with_rules(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<impl Read + Seek>,
     rules: &RunRules,
-) -> ReplayResult {
+) -> Result<ReplayLog> {
     let version = save_file.get_factorio_version()?;
     let mut instance = install_dir.get_or_download_factorio(version).await?;
 
@@ -101,15 +90,12 @@ pub async fn run_replay_with_rules(
     instance.delete_saves_dir()?;
     instance.add_save_with_installed_replay_script(save_file, "")?;
 
-    let mod_versions = instance
-        .get_mod_versions(save_file.save_name())
-        .await
-        .context("Failed to get mod versions")?;
+    let mod_versions = instance.get_mod_versions(save_file.save_name()).await?;
 
-    check_expected_mods(&rules.expected_mods, &mod_versions)
-        .map_err(ReplayError::PreRunCheckFailed)?;
+    check_expected_mods(&rules.expected_mods, &mod_versions)?;
 
     info!("Pre-run checks passed, running replay");
+    info!("Enabled checks: {:?}", rules.replay_checks);
     let replay_script = rules.replay_checks.to_string();
     let replay_log = run_replay_internal(&instance, save_file, &replay_script).await?;
 

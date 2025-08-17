@@ -6,7 +6,6 @@ members = [ "crates/cli", "crates/replay-runner", "crates/replay-script", "crate
 anyhow = "1.0"
 async-process = "2.4.0"
 async-trait = "0.1.88"
-bytes = "1.10.1"
 clap = { version = "4.5.41", features = ["derive"] }
 dotenvy = "0.15.7"
 dropbox-sdk = { version = "0.19.1", features = ["async_routes", "default_async_client", "dbx_files"] }

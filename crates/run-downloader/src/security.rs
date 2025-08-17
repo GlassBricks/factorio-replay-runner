@@ -133,13 +133,14 @@ pub fn validate_file_info(
 }
 
 lazy_static! {
-    static ref VALID_FILE_NAME_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+$").unwrap();
+    static ref INVALID_FILE_NAME_REGEX: Regex = Regex::new(r"[/\\]").unwrap();
 }
 
-fn validate_file_name(as_str: &str) -> Result<()> {
+fn validate_file_name(file_name: &str) -> Result<()> {
     ensure!(
-        VALID_FILE_NAME_REGEX.is_match(as_str),
-        "File name contains invalid characters"
+        !INVALID_FILE_NAME_REGEX.is_match(file_name),
+        "File name {} contains path separators",
+        file_name
     );
     Ok(())
 }
