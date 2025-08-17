@@ -10,7 +10,7 @@ use replay_runner::{
 use replay_script::MsgType;
 use run_downloader::{
     FileDownloader,
-    services::{dropbox::DropboxService, gdrive::GoogleDriveService},
+    services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
 };
 use run_replay::run_replay;
 use src_integration::{RemoteReplayResult, run_replay_from_src_run};
@@ -163,6 +163,7 @@ async fn create_file_downloader() -> Result<FileDownloader> {
     Ok(FileDownloader::builder()
         .add_service(GoogleDriveService::from_env().await?)
         .add_service(DropboxService::from_env().await?)
+        .add_service(SpeedrunService::new())
         .build())
 }
 

@@ -154,7 +154,8 @@ pub fn validate_downloaded_file(
     validate_zip_file(file, config)?;
 
     let actual_size = file.metadata()?.len();
-    if actual_size != file_info.size {
+    // Allow size mismatch when expected size is 0 (unknown size from services that can't get metadata)
+    if file_info.size != 0 && actual_size != file_info.size {
         bail!(
             "File size mismatch: expected {}, got {}",
             file_info.size,

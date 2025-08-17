@@ -151,9 +151,8 @@ impl FileDownloader {
             out_file.to_path_buf()
         };
 
-        let mut file = File::create(&file_path)?;
         download_handle
-            .download(&mut file)
+            .download(&file_path)
             .await
             .map_err(|err| DownloadError::ServiceError(err.into()))?;
 

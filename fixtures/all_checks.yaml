@@ -5,3 +5,4 @@ replay_checks:
   no_blueprint_import: true
   no_map_editor: true
   open_other_player: true
+  disable_all: false

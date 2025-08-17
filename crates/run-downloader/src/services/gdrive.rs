@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{fs::File, io::Write};
+use std::path::Path;
 
 use yup_oauth2::{
     AccessToken, ServiceAccountAuthenticator, ServiceAccountKey,
@@ -129,9 +129,10 @@ async fn get_unauthenticated_file_info(
 
 async fn download_file_streaming(
     file_id: &str,
-    dest: &mut File,
+    dest: &Path,
     token: Option<&AccessToken>,
 ) -> Result<()> {
+    use std::{fs::File, io::Write};
     let client = reqwest::Client::new();
 
     let url = match token {
@@ -146,11 +147,12 @@ async fn download_file_streaming(
         anyhow::bail!("Failed to download file: HTTP {}", response.status());
     }
 
+    let mut dest_file = File::create(dest)?;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        dest.write_all(&chunk?)?;
+        dest_file.write_all(&chunk?)?;
     }
-    dest.flush()?;
+    dest_file.flush()?;
 
     Ok(())
 }
@@ -229,7 +231,7 @@ impl FileService for GoogleDriveService {
         }
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
         let token = self.get_token().await?;
 
         download_file_streaming(file_id, dest, token.as_ref()).await
@@ -276,10 +278,7 @@ mod tests {
     async fn download_test(service: &mut GoogleDriveService) {
         let temp_file = NamedTempFile::new().unwrap();
         service
-            .download(
-                &TEST_FILE_ID.to_string(),
-                &mut std::fs::File::create(temp_file.path()).unwrap(),
-            )
+            .download(&TEST_FILE_ID.to_string(), temp_file.path())
             .await
             .unwrap();
 

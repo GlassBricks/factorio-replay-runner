@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{env, fs::File, io::Write};
+use std::{env, path::Path};
 use tokio::io::AsyncReadExt;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
@@ -75,7 +75,9 @@ async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta>
     }
 }
 
-async fn download_file(file_id: &DropboxFileId, dest: &mut File, token: &str) -> Result<()> {
+async fn download_file(file_id: &DropboxFileId, dest: &Path, token: &str) -> Result<()> {
+    use std::{fs::File, io::Write};
+
     #[expect(deprecated)]
     let auth = Authorization::from_long_lived_access_token(token.to_string());
     let client = UserAuthDefaultClient::new(auth);
@@ -83,6 +85,7 @@ async fn download_file(file_id: &DropboxFileId, dest: &mut File, token: &str) ->
     let response = get_shared_link_file(&client, file_id.inner(), None, None).await?;
 
     if let Some(reader) = response.body {
+        let mut dest_file = File::create(dest)?;
         let mut compat_reader = reader.compat();
         let mut buffer = [0; 8192];
 
@@ -90,14 +93,14 @@ async fn download_file(file_id: &DropboxFileId, dest: &mut File, token: &str) ->
             match compat_reader.read(&mut buffer).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    dest.write_all(&buffer[..n])?;
+                    dest_file.write_all(&buffer[..n])?;
                 }
                 Err(e) => {
                     anyhow::bail!("Read error: {}", e);
                 }
             }
         }
-        dest.flush()?;
+        dest_file.flush()?;
     } else {
         anyhow::bail!("No response body received from Dropbox");
     }
@@ -148,7 +151,7 @@ impl FileService for DropboxService {
         get_file_info(file_id, &token).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &mut File) -> Result<()> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
         let token = self.ensure_token().await?;
         download_file(file_id, dest, &token).await
     }
@@ -200,10 +203,7 @@ mod tests {
     async fn download_test(service: &mut DropboxService, test_url: &str) -> Result<()> {
         let file_id = DropboxFileId::new(test_url.to_string());
         let temp_file = tempfile::NamedTempFile::new()?;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .open(temp_file.path())?;
-        service.download(&file_id, &mut file).await?;
+        service.download(&file_id, temp_file.path()).await?;
 
         assert!(temp_file.path().exists());
         let metadata = std::fs::metadata(temp_file.path())?;
