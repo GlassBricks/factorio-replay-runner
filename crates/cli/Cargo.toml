@@ -8,9 +8,9 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 replay-runner = { path = "../replay-runner" }
-replay-script = { version = "0.1.0", path = "../replay-script" }
+replay-script = {  path = "../replay-script" }
 serde = { workspace = true }
-serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 
 [dev-dependencies]
 test-utils = { path = "../test-utils" }

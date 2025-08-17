@@ -1,12 +1,10 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use std::io::Read;
-use std::time::Duration;
 use std::{fs::File, path::Path};
 
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
     pub max_file_size: u64,
-    pub download_timeout: Duration,
     pub max_extracted_size: u64,
     pub max_zip_entries: usize,
     pub allowed_extensions: Vec<String>,
@@ -15,43 +13,11 @@ pub struct SecurityConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            max_file_size: 100 * 1024 * 1024,           // 100 MB
-            download_timeout: Duration::from_secs(120), // 2 minutes
-            max_extracted_size: 500 * 1024 * 1024,      // 500 MB
+            max_file_size: 100 * 1024 * 1024,      // 100 MB
+            max_extracted_size: 500 * 1024 * 1024, // 500 MB
             max_zip_entries: 1000,
             allowed_extensions: vec![".zip".to_string()],
         }
-    }
-}
-
-impl SecurityConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn max_file_size(mut self, size: u64) -> Self {
-        self.max_file_size = size;
-        self
-    }
-
-    pub fn download_timeout(mut self, timeout: Duration) -> Self {
-        self.download_timeout = timeout;
-        self
-    }
-
-    pub fn max_extracted_size(mut self, size: u64) -> Self {
-        self.max_extracted_size = size;
-        self
-    }
-
-    pub fn max_zip_entries(mut self, entries: usize) -> Self {
-        self.max_zip_entries = entries;
-        self
-    }
-
-    pub fn allowed_extensions(mut self, extensions: Vec<String>) -> Self {
-        self.allowed_extensions = extensions;
-        self
     }
 }
 
@@ -79,31 +45,22 @@ fn validate_file_extension(filename: &str, config: &SecurityConfig) -> Result<()
     }
 
     bail!(
-        "File extension not allowed for file: {}. Allowed extensions: {:?}",
+        "File extension not allowed: {}. Allowed extensions: {:?}",
         filename,
         config.allowed_extensions
     );
 }
 
 fn validate_zip_file(file: &mut File, config: &SecurityConfig) -> Result<()> {
-    let mut buffer = [0u8; 4];
-    file.read_exact(&mut buffer)
-        .map_err(|e| anyhow!("IO error: {}", e))?;
-
-    if buffer != [0x50, 0x4b, 0x03, 0x04] {
-        bail!("Invalid ZIP magic number");
-    }
-
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| anyhow!("ZIP archive error: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).with_context(|| "Failed to read zip")?;
 
     // Check number of entries
     if archive.len() > config.max_zip_entries {
-        return Err(anyhow!(
-            "ZIP file has {} entries, exceeds maximum {}",
+        bail!(
+            "ZIP file has {} entries, maximum is {}",
             archive.len(),
             config.max_zip_entries
-        ));
+        );
     }
 
     let mut total_uncompressed_size = 0u64;
@@ -111,29 +68,19 @@ fn validate_zip_file(file: &mut File, config: &SecurityConfig) -> Result<()> {
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
-            .map_err(|e| anyhow!("ZIP archive error: {}", e))?;
+            .with_context(|| format!("Failed to read ZIP entry {}", i))?;
 
         validate_zip_entry_path(entry.name())?;
 
         total_uncompressed_size += entry.size();
-
-        // Check if individual file is too large
-        if entry.size() > config.max_extracted_size {
-            return Err(anyhow!(
-                "ZIP entry '{}' size {} exceeds maximum {}",
-                entry.name(),
-                entry.size(),
-                config.max_extracted_size
-            ));
-        }
     }
 
     if total_uncompressed_size > config.max_extracted_size {
-        return Err(anyhow!(
+        bail!(
             "Total uncompressed size {} exceeds maximum {}",
             total_uncompressed_size,
             config.max_extracted_size
-        ));
+        );
     }
 
     Ok(())
@@ -159,7 +106,7 @@ fn validate_zip_entry_path(path: &str) -> Result<()> {
 fn validate_zip_magic_number(file: &mut File) -> Result<()> {
     let mut buffer = [0u8; 4];
     file.read_exact(&mut buffer)
-        .map_err(|e| anyhow!("IO error: {}", e))?;
+        .with_context(|| "Failed to read file")?;
 
     // ZIP file magic numbers
     const ZIP_MAGIC: [u8; 4] = [0x50, 0x4B, 0x03, 0x04]; // "PK\x03\x04"
@@ -206,17 +153,16 @@ mod tests {
     use crate::FileInfo;
 
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn test_security_config_builder() {
-        let config = SecurityConfig::new()
-            .max_file_size(50 * 1024 * 1024)
-            .download_timeout(Duration::from_secs(60))
-            .max_zip_entries(500);
+        let config = SecurityConfig {
+            max_file_size: 50 * 1024 * 1024,
+            max_zip_entries: 500,
+            ..Default::default()
+        };
 
         assert_eq!(config.max_file_size, 50 * 1024 * 1024);
-        assert_eq!(config.download_timeout, Duration::from_secs(60));
         assert_eq!(config.max_zip_entries, 500);
     }
 
@@ -225,7 +171,13 @@ mod tests {
         let config = SecurityConfig::default();
 
         assert!(validate_file_size(1000, &config).is_ok());
-        assert!(validate_file_size(config.max_file_size + 1, &config).is_err());
+        let result = validate_file_size(config.max_file_size + 1, &config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File size 104857601 exceeds maximum allowed 104857600 bytes")
+        );
     }
 
     #[test]
@@ -234,17 +186,53 @@ mod tests {
 
         assert!(validate_file_extension("test.zip", &config).is_ok());
         assert!(validate_file_extension("test.ZIP", &config).is_ok());
-        assert!(validate_file_extension("test.txt", &config).is_err());
-        assert!(validate_file_extension("test", &config).is_err());
+        let result = validate_file_extension("test.txt", &config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File extension not allowed: test.txt. Allowed extensions: [\".zip\"]")
+        );
+        let result = validate_file_extension("test", &config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("File extension not allowed: test. Allowed extensions: [\".zip\"]")
+        );
     }
 
     #[test]
     fn test_validate_zip_entry_path() {
         assert!(validate_zip_entry_path("normal/path/file.txt").is_ok());
-        assert!(validate_zip_entry_path("../../../etc/passwd").is_err());
-        assert!(validate_zip_entry_path("/absolute/path").is_err());
-        assert!(validate_zip_entry_path("\\windows\\path").is_err());
-        assert!(validate_zip_entry_path("C:\\windows\\path").is_err());
+        let result = validate_zip_entry_path("../../../etc/passwd");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Path traversal attempt detected: ../../../etc/passwd")
+        );
+        let result = validate_zip_entry_path("/absolute/path");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Absolute path detected: /absolute/path")
+        );
+        let result = validate_zip_entry_path("\\windows\\path");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Absolute path detected: \\windows\\path")
+        );
+        let result = validate_zip_entry_path("C:\\windows\\path");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Windows drive path detected: C:\\windows\\path")
+        );
     }
 
     use std::io::Write;
@@ -280,13 +268,16 @@ mod tests {
         zip.finish().unwrap();
 
         // Test with very low limit - should fail
-        let config = SecurityConfig::new().max_zip_entries(3);
+        let config = SecurityConfig {
+            max_zip_entries: 3,
+            ..Default::default()
+        };
         let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
             err.to_string()
-                .contains("ZIP file has 5 entries, exceeds maximum 3")
+                .contains("ZIP file has 5 entries, maximum is 3")
         );
     }
 
@@ -302,11 +293,17 @@ mod tests {
         zip.finish().unwrap();
 
         // Test with very low size limit - should fail
-        let config = SecurityConfig::new().max_extracted_size(1000); // 1KB limit
+        let config = SecurityConfig {
+            max_extracted_size: 1000,
+            ..Default::default()
+        };
         let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("size 2000 exceeds maximum 1000"));
+        assert!(
+            err.to_string()
+                .contains("Total uncompressed size 2000 exceeds maximum 1000")
+        );
     }
 
     #[test]
@@ -322,7 +319,10 @@ mod tests {
         }
         zip.finish().unwrap();
 
-        let config = SecurityConfig::new().max_extracted_size(2000);
+        let config = SecurityConfig {
+            max_extracted_size: 2000,
+            ..Default::default()
+        };
         let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -347,12 +347,18 @@ mod tests {
         let result = validate_zip_file(temp_file.as_file_mut(), &config);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Path traversal attempt detected"));
+        assert!(
+            err.to_string()
+                .contains("Path traversal attempt detected: ../../../etc/passwd")
+        );
     }
 
     #[test]
     fn test_security_error_types() {
-        let config = SecurityConfig::new().max_file_size(100);
+        let config = SecurityConfig {
+            max_file_size: 100,
+            ..Default::default()
+        };
 
         let large_file_info = FileInfo {
             name: "test.zip".to_string(),

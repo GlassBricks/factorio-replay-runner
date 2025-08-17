@@ -1,0 +1,7 @@
+expected_mods: SpaceAge
+checks:
+  check_console_commands: true
+  first_rocket_launched: true
+  no_blueprint_import: true
+  no_map_editor: true
+  open_other_player: true

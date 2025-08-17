@@ -147,7 +147,10 @@ mod tests {
 
     #[test]
     fn test_file_downloader_creation() {
-        let config = SecurityConfig::new().max_file_size(1024);
+        let config = SecurityConfig {
+            max_file_size: 1024,
+            ..Default::default()
+        };
         let downloader = FileDownloader::builder()
             .add_service(MockService)
             .with_security_config(config)

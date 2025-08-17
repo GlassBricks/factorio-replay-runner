@@ -16,17 +16,18 @@ use std::{
 #[command(name = "factorio-replay-cli")]
 #[command(about = "Run Factorio replays with custom scripts and analyze the results")]
 struct Args {
-    /// Path to the Factorio save file (.zip)
+    /// Factorio save file
     save_file: PathBuf,
 
-    /// Path to the JSON rules file
+    /// Rules file (json/yaml)
     rules_file: PathBuf,
 
-    /// Factorio installation directory (defaults to ./factorio_installs)
+    /// Factorio installations directory (defaults to ./factorio_installs)
+    /// Installs will created at install_dir/{version}/
     #[arg(long, default_value = "./factorio_installs")]
     install_dir: PathBuf,
 
-    /// Output file path (defaults to save file name with .txt extension)
+    /// Output file path; defaults to save file name with .txt extension
     #[arg(short, long)]
     output: Option<PathBuf>,
 }
@@ -50,7 +51,7 @@ async fn main() -> Result<()> {
         .output
         .unwrap_or_else(|| args.save_file.with_extension("txt"));
 
-    let result = cli_main(
+    let result = run_replay_on_file(
         &args.save_file,
         &args.rules_file,
         &args.install_dir,
@@ -109,7 +110,7 @@ fn summarize_results(replay_log: &ReplayLog, replay_log_path: &Path) {
     println!("Summary: {error_count} errors, {warn_count} warnings, {info_count} info messages");
 }
 
-async fn cli_main(
+async fn run_replay_on_file(
     save_file_path: &Path,
     rules_file_path: &Path,
     install_dir_path: &Path,
@@ -131,9 +132,9 @@ async fn cli_main(
     let reader = File::open(rules_file_path)
         .with_context(|| format!("Failed to open rules file: {}", rules_file_path.display()))?;
 
-    let rules: Rules = serde_json::from_reader(reader).with_context(|| {
+    let rules: Rules = serde_yaml::from_reader(reader).with_context(|| {
         format!(
-            "Failed to parse rules file as JSON: {}",
+            "Failed to parse rules file as YAML: {}",
             rules_file_path.display()
         )
     })?;
@@ -185,10 +186,10 @@ mod tests {
         fs::create_dir_all(&test_dir)?;
 
         let test_save_path = fixtures_dir.join("TEST.zip");
-        let rules_file_path = fixtures_dir.join("all_rules.json");
+        let rules_file_path = fixtures_dir.join("all_rules.yaml");
         let output_path = test_dir.join("TEST.txt");
 
-        let result = cli_main(
+        let result = run_replay_on_file(
             &test_save_path,
             &rules_file_path,
             &install_dir_path,
@@ -236,8 +237,8 @@ mod tests {
             checks: all_scripts,
         };
 
-        let rules_json_path = fixtures_dir.join("all_rules.json");
-        let rules_json = serde_json::to_string_pretty(&test_all_rules).unwrap();
-        fs::write(rules_json_path, rules_json).unwrap();
+        let rules_yaml_path = fixtures_dir.join("all_rules.yaml");
+        let rules_yaml = serde_yaml::to_string(&test_all_rules).unwrap();
+        fs::write(rules_yaml_path, rules_yaml).unwrap();
     }
 }

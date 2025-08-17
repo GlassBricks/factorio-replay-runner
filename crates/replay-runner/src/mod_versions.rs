@@ -23,7 +23,7 @@ impl FactorioInstance {
     fn read_mod_list(&self) -> Result<Vec<ModOption>> {
         let path = self.install_dir().join("mods/mod-list.json");
         let content = fs::read_to_string(&path)?;
-        let mod_list = serde_json::from_str::<ModList>(&content)?;
+        let mod_list = serde_yaml::from_str::<ModList>(&content)?;
         Ok(mod_list.mods)
     }
 
