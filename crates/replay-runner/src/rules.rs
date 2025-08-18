@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize)]
 pub struct SrcRunRules {
+    #[serde(flatten)]
     pub games: HashMap<String, GameRules>,
 }
 

@@ -107,7 +107,7 @@ impl FileDownloader {
             Ok(zip) => info!(
                 "Successfully downloaded {} to {}",
                 zip.name,
-                out_file_or_path.display()
+                zip.path.display()
             ),
             Err(err) => error!("Failed to download: {}", err),
         };

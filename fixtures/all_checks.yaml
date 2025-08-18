@@ -1,4 +1,4 @@
-expected_mods: SpaceAge
+expected_mods: Base
 replay_checks:
   check_console_commands: true
   first_rocket_launched: true

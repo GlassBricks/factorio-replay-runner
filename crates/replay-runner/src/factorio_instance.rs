@@ -27,8 +27,8 @@ impl FactorioInstance {
     pub fn create_save_file(&self, file_name: &str) -> Result<File> {
         let mut saves_path = self.install_dir_abs.join("saves");
         create_dir_all(&saves_path)?;
-        saves_path.push(file_name);
-        saves_path.set_extension("zip");
+        saves_path.push(format!("{file_name}.zip"));
+        dbg!(&saves_path);
         Ok(File::create(saves_path)?)
     }
 
