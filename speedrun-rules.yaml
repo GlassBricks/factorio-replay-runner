@@ -1,5 +1,15 @@
-Factorio:
+Factorio Space Age:
+  expected_mods:
+    - base
+    - quality
+    - elevated-rails
+    - space-age
   categories:
-"Factorio: Space Age":
-  default settings new game:
-    blueprint_import: yes
+    Random Seed New Game+:
+      blueprint import: true
+Factorio:
+  expected_mods:
+    - base
+  categories:
+    Any%:
+      win on rocketaaa launchy: true

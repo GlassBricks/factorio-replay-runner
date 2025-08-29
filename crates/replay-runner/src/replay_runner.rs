@@ -5,7 +5,7 @@ use replay_script::ReplayMsg;
 use std::io::{Read, Seek};
 use std::str::FromStr;
 
-use crate::expected_mods::check_expected_mods;
+use crate::expected_mods::{ExpectedMods, check_expected_mods};
 use crate::factorio_install_dir::FactorioInstallDir;
 use crate::factorio_instance::FactorioProcess;
 use crate::rules::RunRules;
@@ -82,6 +82,7 @@ pub async fn run_replay_with_rules(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<impl Read + Seek>,
     rules: &RunRules,
+    expected_mods: &ExpectedMods,
 ) -> Result<ReplayLog> {
     let version = save_file.get_factorio_version()?;
     let mut instance = install_dir.get_or_download_factorio(version).await?;
@@ -92,7 +93,7 @@ pub async fn run_replay_with_rules(
 
     let mod_versions = instance.get_mod_versions(save_file.save_name()).await?;
 
-    check_expected_mods(&rules.expected_mods, &mod_versions)?;
+    check_expected_mods(expected_mods, &mod_versions)?;
 
     info!("Pre-run checks passed, running replay");
     info!("Enabled checks: {:?}", rules.replay_checks);

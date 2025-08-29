@@ -3,6 +3,7 @@ use std::{fs::File, io::Write, path::Path};
 use anyhow::{Context, Result};
 use log::info;
 use replay_runner::{
+    expected_mods::ExpectedMods,
     factorio_install_dir::FactorioInstallDir,
     replay_runner::{ReplayLog, run_replay_with_rules},
     rules::RunRules,
@@ -13,9 +14,10 @@ pub async fn run_replay(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<File>,
     rules: &RunRules,
+    expected_mods: &ExpectedMods,
     output_path: &Path,
 ) -> Result<ReplayLog> {
-    let log = run_replay_with_rules(install_dir, save_file, rules).await?;
+    let log = run_replay_with_rules(install_dir, save_file, rules, expected_mods).await?;
     write_replay_log(&log, output_path).context("Failed to write replay log")?;
     Ok(log)
 }

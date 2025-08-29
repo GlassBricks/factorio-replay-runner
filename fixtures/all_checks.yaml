@@ -1,8 +1,11 @@
-expected_mods: Base
-replay_checks:
-  check_console_commands: true
-  first_rocket_launched: true
-  no_blueprint_import: true
-  no_map_editor: true
-  open_other_player: true
-  disable_all: false
+expected_mods:
+- quality
+- base
+- elevated-rails
+- space-age
+bad_console_commands: false
+blueprint_import: false
+map_editor: false
+max_players: 1
+open_other_player: false
+win_on_rocket_launch: true

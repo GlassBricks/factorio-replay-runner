@@ -87,6 +87,23 @@ mod tests {
     }
 
     #[test]
+    fn test_serde_defaults() {
+        let scripts: ReplayScripts = serde_yaml::from_str("{}").unwrap();
+
+        assert_eq!(scripts.max_players, Some(1));
+        assert_eq!(scripts.bad_console_commands, false);
+        assert_eq!(scripts.blueprint_import, false);
+        assert_eq!(scripts.map_editor, false);
+        assert_eq!(scripts.open_other_player, false);
+        assert_eq!(scripts.win_on_rocket_launch, false);
+
+        // Test partial deserialization preserves defaults for missing fields
+        let scripts: ReplayScripts = serde_yaml::from_str("win_on_rocket_launch: true").unwrap();
+        assert_eq!(scripts.win_on_rocket_launch, true);
+        assert_eq!(scripts.max_players, Some(1)); // Should still use configured default
+    }
+
+    #[test]
     fn test_parse_msg() {
         let msg = "REPLAY_SCRIPT_EVENT:\t123\tError\tSome message";
         let msg = ReplayMsg::from_str(msg);

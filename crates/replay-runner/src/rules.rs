@@ -11,6 +11,7 @@ pub struct SrcRunRules {
 
 #[derive(Deserialize, Serialize)]
 pub struct GameRules {
+    pub expected_mods: ExpectedMods,
     pub categories: HashMap<String, CategoryRules>,
 }
 
@@ -23,6 +24,8 @@ pub struct CategoryRules {
 
 #[derive(Deserialize, Serialize)]
 pub struct RunRules {
-    pub expected_mods: ExpectedMods,
+    #[serde(rename = "expected_mods")]
+    pub expected_mods_override: Option<ExpectedMods>,
+    #[serde(flatten)]
     pub replay_checks: ReplayScripts,
 }

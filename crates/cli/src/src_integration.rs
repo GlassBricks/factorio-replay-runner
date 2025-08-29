@@ -1,5 +1,7 @@
 use anyhow::Result;
+use itertools::Itertools;
 use log::info;
+use replay_runner::expected_mods::ExpectedMods;
 use replay_runner::rules::{RunRules, SrcRunRules};
 use replay_runner::save_file::SaveFile;
 use run_downloader::FileDownloader;
@@ -29,12 +31,19 @@ pub async fn run_replay_from_src_run(
     info!("Fetching run data ( https://speedrun.com/runs/{} )", run_id);
     let run = fetch_src_run(run_id).await?;
     let (game, category) = fetch_game_and_category(&run).await?;
-    let run_rules = select_rules(&game, &category, &rules)?;
-    info!("Downloading run");
+    let (run_rules, expected_mods) = select_rules(&game, &category, &rules)?;
+    info!("Downloading save file");
     let mut save_file = download_run_from_description(downloader, &working_dir, run).await?;
 
     let output_path = working_dir.join("output.log");
-    let result = run_replay(&factorio_dir, &mut save_file, &run_rules, &output_path).await?;
+    let result = run_replay(
+        &factorio_dir,
+        &mut save_file,
+        &run_rules,
+        expected_mods,
+        &output_path,
+    )
+    .await?;
 
     Ok(result)
 }
@@ -69,9 +78,11 @@ fn select_rules<'a>(
     game: &types::Game<'_>,
     category: &types::Category<'_>,
     rules: &'a SrcRunRules,
-) -> Result<&'a RunRules> {
-    let game_name = normalize_name(&game.names.international);
-    let category_name = normalize_name(&category.name);
+) -> Result<(&'a RunRules, &'a ExpectedMods)> {
+    let orig_game_name = &game.names.international;
+    let orig_category_name = &category.name;
+    let game_name = normalize_name(orig_game_name);
+    let category_name = normalize_name(orig_category_name);
 
     let game_rules = rules
         .games
@@ -92,17 +103,25 @@ fn select_rules<'a>(
         .find(|(key, _)| normalize_name(key) == category_name)
         .map(|(_, rules)| rules)
         .ok_or_else(|| {
+            let existing_categories = game_rules.categories.keys() .join(", ");
             anyhow::anyhow!(
-                "Category rules not configured for '{}' (normalized: '{}')",
+                "Category rules not configured for '{}' (normalized: '{}'). Available categories: {}",
                 category.name,
-                category_name
+                category_name,
+                existing_categories
             )
         })?;
 
-    info!("Game: {}, Category: {}", game_name, category_name);
+    info!("Game: {}, Category: {}", orig_game_name, orig_category_name);
 
-    let rules = &category_rules.run_rules;
-    Ok(rules)
+    let run_rules = &category_rules.run_rules;
+
+    let expected_mods = &run_rules
+        .expected_mods_override
+        .as_ref()
+        .unwrap_or(&game_rules.expected_mods);
+
+    Ok((run_rules, expected_mods))
 }
 
 fn normalize_name(name: &str) -> String {

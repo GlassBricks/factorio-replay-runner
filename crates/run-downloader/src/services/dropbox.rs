@@ -226,40 +226,29 @@ mod tests {
                 download_test(&mut service, TEST_URL).await.unwrap();
             }
             Err(_) => {
-                eprintln!(
-                    "Test failed - likely due to expired token or missing sharing.read scope"
-                );
+                panic!("Test failed - likely due to expired token or missing sharing.read scope");
             }
         }
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_file_downloader_integration() {
+    async fn test_file_downloader_integration() -> anyhow::Result<()> {
         dotenvy::dotenv().ok();
 
         let Ok(service) = DropboxService::from_env().await else {
             eprintln!("Skipping FileDownloader integration test - DROPBOX_TOKEN not set");
-            return;
+            return Ok(());
         };
 
         let mut downloader = FileDownloader::builder().add_service(service).build();
 
-        match downloader.download_zip_to_temp(TEST_URL).await {
-            Ok((file, info)) => {
-                assert_eq!(info.name, "foo.zip");
-                assert!(file.path().exists());
+        let (file, info) = downloader.download_zip_to_temp(TEST_URL).await?;
+        assert_eq!(info.name, "foo.zip");
+        assert!(file.path().exists());
 
-                let metadata = std::fs::metadata(file.path()).unwrap();
-                assert_eq!(metadata.len(), 119);
-            }
-            Err(e) => {
-                if e.to_string().contains("sharing.read") {
-                    eprintln!("test skipped - Dropbox app needs sharing.read scope");
-                } else {
-                    eprintln!("FileDownloader integration test failed: {}", e);
-                }
-            }
-        }
+        let metadata = std::fs::metadata(file.path()).unwrap();
+        assert_eq!(metadata.len(), 119);
+        Ok(())
     }
 }

@@ -124,7 +124,17 @@ async fn run_file(
     let install_dir = load_install_dir(install_dir).await?;
     let mut save_file = load_save_file(save_file).await?;
     let rules = load_run_rules(rules_file).await?;
-    run_replay(&install_dir, &mut save_file, &rules, output_path).await
+    run_replay(
+        &install_dir,
+        &mut save_file,
+        &rules,
+        rules
+            .expected_mods_override
+            .as_ref()
+            .expect("Expected mods is required for basic rules"),
+        output_path,
+    )
+    .await
 }
 
 async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {

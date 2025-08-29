@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use log::LevelFilter;
-use replay_runner::expected_mods::ExpectedMods;
 use replay_runner::rules::RunRules;
 use replay_script::ReplayScripts;
 use std::fs;
@@ -22,7 +21,12 @@ fn write_all_checks() {
     let fixtures_dir = test_utils::fixtures_dir();
     let all_scripts = ReplayScripts::all_enabled();
     let test_all_rules = RunRules {
-        expected_mods: ExpectedMods::SpaceAge,
+        expected_mods_override: Some(
+            ["base", "quality", "elevated-rails", "space-age"]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
+        ),
         replay_checks: all_scripts,
     };
 
