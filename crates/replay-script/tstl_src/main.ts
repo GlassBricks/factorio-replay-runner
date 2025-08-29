@@ -10,6 +10,7 @@ declare global {
   }
   var addReplayLib: (lib: ReplayLib) => void
   var afterReplay: (fn: () => void) => void
+  var PARAM_VALUE: any
 
   type NamedEvents = {
     [K in keyof typeof defines.events]?: (

@@ -2,44 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, str::FromStr};
 use strum::{Display, EnumString, VariantArray};
 
-macro_rules! generate_replay_scripts {
-    ($($file_name:ident),*) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-        pub struct ReplayScripts {
-            $(#[serde(default)]
-            pub $file_name: bool,)*
-
-            #[serde(default)]
-            pub disable_all: bool
-        }
-
-        impl ReplayScripts {
-            pub fn all_enabled() -> Self {
-                Self {
-                    $($file_name: true,)*
-                    disable_all: false
-                }
-            }
-        }
-
-        impl std::fmt::Display for ReplayScripts {
-            fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-                if self.disable_all {
-                    fmt.write_str("-- All replay scripts are disabled\n")?;
-                } else {
-                    fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/main.lua")))?;
-                    $(
-                        if self.$file_name {
-                            writeln!(fmt, "-- Script for {}", stringify!($file_name))?;
-                            fmt.write_str(include_str!(concat!(env!("OUT_DIR"), "/rules/", stringify!($file_name), ".lua")))?;
-                        }
-                    )*
-                }
-                Ok(())
-            }
-        }
-    };
-}
 include!(concat!(env!("OUT_DIR"), "/replay_scripts.rs"));
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, VariantArray, Display, EnumString)]
@@ -79,20 +41,49 @@ mod tests {
     use itertools::iproduct;
 
     #[test]
-    fn test_write_replay_scripts() {
-        let replay_scripts = ReplayScripts {
-            check_console_commands: true,
-            ..Default::default()
-        };
+    fn test_defaults() {
+        let output = ReplayScripts::default().to_string();
 
-        let output = replay_scripts.to_string();
-        let expected = include_str!(concat!(env!("OUT_DIR"), "/main.lua")).to_string()
-            + "-- Script for check_console_commands\n"
-            + include_str!(concat!(
-                env!("OUT_DIR"),
-                "/rules/check_console_commands.lua"
-            ));
-        assert_eq!(output, expected);
+        let header = include_str!(concat!(env!("OUT_DIR"), "/main.lua"));
+        assert!(output.starts_with(header));
+
+        assert!(output.contains("max_players"));
+        assert!(output.contains("no_bad_console_commands"));
+        assert!(output.contains("no_blueprint_import"));
+        assert!(output.contains("no_map_editor"));
+        assert!(output.contains("no_open_other_player"));
+
+        assert!(!output.contains("win_on_rocket_launch"));
+        assert!(output.contains("local maxPlayers = 1\n"));
+    }
+
+    #[test]
+    fn test_configure_script() {
+        let mut scripts = ReplayScripts::default();
+        scripts.blueprint_import = true;
+        scripts.win_on_rocket_launch = true;
+        scripts.max_players = Some(137);
+
+        let output = scripts.to_string();
+        assert!(!output.contains("blueprint_import"));
+        assert!(output.contains("win_on_rocket_launch"));
+        assert!(output.contains("local maxPlayers = 137"));
+    }
+
+    #[test]
+    fn test_all_enabled() {
+        let output = ReplayScripts::all_enabled().to_string();
+        for file_name in ReplayScripts::all_scripts() {
+            assert!(output.contains(file_name));
+        }
+    }
+
+    #[test]
+    fn test_no_export_in_replay_script() {
+        let output = ReplayScripts::default().to_string();
+        for pattern in ["return ____exports"] {
+            assert!(!output.contains(pattern));
+        }
     }
 
     #[test]
@@ -119,27 +110,6 @@ mod tests {
             assert_eq!(formatted.msg_type, msg_type);
             assert_eq!(formatted.time, time);
             assert_eq!(formatted.message, msg);
-        }
-    }
-
-    #[test]
-    fn test_all_enabled() {
-        let all_enabled = ReplayScripts::all_enabled();
-        assert!(all_enabled.check_console_commands);
-        assert!(all_enabled.first_rocket_launched);
-        assert!(all_enabled.no_blueprint_import);
-        assert!(all_enabled.no_map_editor);
-        assert!(all_enabled.open_other_player);
-    }
-
-    #[test]
-    fn test_no_export_in_replay_script() {
-        let replay_scripts = ReplayScripts::all_enabled();
-        let output = replay_scripts.to_string();
-        println!("{}", output);
-        println!("{}", output.contains("____exports"));
-        for pattern in ["return ____exports"] {
-            assert!(!output.contains(pattern));
         }
     }
 }

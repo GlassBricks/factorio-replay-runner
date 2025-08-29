@@ -10,3 +10,6 @@ strum = { workspace = true }
 
 [build-dependencies]
 glob = { workspace = true }
+itertools = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }

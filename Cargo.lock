@@ -1824,6 +1824,7 @@ dependencies = [
  "glob",
  "itertools",
  "serde",
+ "serde_yaml",
  "strum",
 ]
 
