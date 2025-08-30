@@ -3,6 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use log::{error, info};
 use replay_runner::{
     factorio_install_dir::FactorioInstallDir,
+    process_manager::setup_signal_handlers,
     replay_runner::ReplayLog,
     rules::{RunRules, SrcRunRules},
     save_file::SaveFile,
@@ -60,7 +61,8 @@ struct RunReplayFromSrcArgs {
     /// Run id
     run_id: String,
 
-    /// GAME rules file (json/yaml)
+    /// GAME rules file (yaml)
+    #[arg(default_value = "./speedrun_rules.yaml")]
     game_rules_file: PathBuf,
 
     /// Factorio installations directory (defaults to ./factorio_installs)
@@ -79,6 +81,10 @@ struct RunReplayFromSrcArgs {
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logger();
+
+    // Set up signal handlers for graceful shutdown
+    setup_signal_handlers().await?;
+
     let args = CliArgs::parse();
 
     let exit_code = match args.command {
@@ -96,11 +102,6 @@ fn init_logger() {
         .init();
 }
 
-/// Exit codes:
-/// 0: Success
-/// 1: Warning
-/// 2: Error
-/// 10: replay run error
 async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
     let RunReplayOnFileArgs {
         save_file,

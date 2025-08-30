@@ -1,3 +1,4 @@
+use crate::process_manager::GLOBAL_PROCESS_MANAGER;
 use crate::save_file::SaveFile;
 use anyhow::{Context, Result};
 use async_process::{Child, Command};
@@ -46,7 +47,7 @@ impl FactorioInstance {
         Ok(())
     }
 
-    pub fn new_run_command(&self) -> Command {
+    fn new_run_command(&self) -> Command {
         let path = self.install_dir_abs.join("bin/x64/factorio");
         Command::new(path)
     }
@@ -76,8 +77,10 @@ pub struct FactorioProcess {
 
 impl FactorioProcess {
     pub fn new(child: Child) -> Self {
+        GLOBAL_PROCESS_MANAGER.register(child.id());
         FactorioProcess { child }
     }
+
     pub fn stdout_reader(&mut self) -> Result<BufReader<&mut async_process::ChildStdout>> {
         self.child
             .stdout
@@ -95,14 +98,16 @@ impl FactorioProcess {
         Ok(output)
     }
 
-    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> {
-        self.child.status()
+    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+        self.child.status().await
     }
 }
 
 impl Drop for FactorioProcess {
     fn drop(&mut self) {
+        let pid = self.child.id();
         self.child.kill().ok();
+        GLOBAL_PROCESS_MANAGER.unregister(pid);
     }
 }
 

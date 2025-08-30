@@ -6,10 +6,8 @@ Factorio Space Age:
     - space-age
   categories:
     Random Seed New Game+:
-      blueprint import: true
+      blueprint_import: true
 Factorio:
   expected_mods:
     - base
-  categories:
-    Any%:
-      win on rocketaaa launchy: true
+  categories: {}

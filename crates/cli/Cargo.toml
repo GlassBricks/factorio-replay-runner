@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
 clap = { workspace = true }
 serde_yaml = { workspace = true }
 log = { workspace = true }

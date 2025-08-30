@@ -10,6 +10,7 @@ pub struct SrcRunRules {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct GameRules {
     pub expected_mods: ExpectedMods,
     pub categories: HashMap<String, CategoryRules>,
@@ -23,6 +24,7 @@ pub struct CategoryRules {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RunRules {
     #[serde(rename = "expected_mods")]
     pub expected_mods_override: Option<ExpectedMods>,

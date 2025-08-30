@@ -263,6 +263,7 @@ fn generate_file_list_for_replay_scripts(out_dir: &str) {
 {default_functions}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplayScripts {{
 {struct_fields}
 }}
