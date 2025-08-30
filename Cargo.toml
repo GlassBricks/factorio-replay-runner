@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "crates/cli", "crates/factorio_manager", "crates/replay-script", "crates/run-downloader", "crates/test-utils"]
+members = [ "crates/cli", "crates/factorio_manager", "crates/replay_script", "crates/zip_downloader", "crates/test-utils"]
 
 [workspace.dependencies]
 anyhow = "1.0"

@@ -17,8 +17,8 @@ speedrun-api = "1.3.0"
 env_logger = "0.11.8"
 async-stream = "0.3.6"
 factorio_manager = { path = "../factorio_manager" }
-replay-script = {  path = "../replay-script" }
-run-downloader = { path = "../run-downloader" }
+replay_script = {  path = "../replay_script" }
+zip_downloader = { path = "../zip_downloader" }
 
 [dev-dependencies]
 test-utils = { path = "../test-utils" }

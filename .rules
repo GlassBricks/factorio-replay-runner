@@ -2,7 +2,7 @@ This is a rust project broken into multiple crates.
 
 ## Crates
 
-### replay-script
+### replay_script
 This crate contains a tstl (TypescriptToLua) subproject in tstl_src/.
 tstl will compile Typescript to lua files, which are the actual scripts installed in Factorio replay files.
 The lua files are included into rust with include_str!, automatically added by a build.rs script.
@@ -16,7 +16,7 @@ This contains "ReplayLog" and "LogMessage", with parsing logic; for messages gen
 ### factorio_manager
 Factorio installation management, and factorio process running.
 
-### run-downloader
+### zip_downloader
 Finds zip file links, and safely downloads them.
 
 ### cli

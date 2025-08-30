@@ -392,13 +392,13 @@ dependencies = [
  "futures 0.3.31",
  "itertools",
  "log",
- "replay-script",
- "run-downloader",
+ "replay_script",
  "serde",
  "serde_yaml",
  "speedrun-api",
  "test-utils",
  "tokio",
+ "zip_downloader",
 ]
 
 [[package]]
@@ -1845,7 +1845,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
-name = "replay-script"
+name = "replay_script"
 version = "0.1.0"
 dependencies = [
  "glob",
@@ -1954,28 +1954,6 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "run-downloader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "dotenvy",
- "dropbox-sdk",
- "futures 0.3.31",
- "lazy_static",
- "log",
- "regex",
- "reqwest 0.12.22",
- "serde",
- "tempfile",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "yup-oauth2",
- "zip",
 ]
 
 [[package]]
@@ -3349,6 +3327,28 @@ dependencies = [
  "zeroize",
  "zopfli",
  "zstd",
+]
+
+[[package]]
+name = "zip_downloader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "dotenvy",
+ "dropbox-sdk",
+ "futures 0.3.31",
+ "lazy_static",
+ "log",
+ "regex",
+ "reqwest 0.12.22",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "yup-oauth2",
+ "zip",
 ]
 
 [[package]]

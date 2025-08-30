@@ -25,7 +25,7 @@ declare global {
 
   // Declares
   const storage: {
-    _REPLAY_SCRIPT_DATA: LuaSet<String>
+    _replay_script_DATA: LuaSet<String>
   }
   var util: typeof import("util")
 }
@@ -34,7 +34,7 @@ _G.util = util
 type MsgType = "Error" | "Warn" | "Info"
 function logEvent(type: MsgType, ...args: string[]): void {
   print(
-    "REPLAY_SCRIPT_EVENT:",
+    "replay_script_EVENT:",
     game.ticks_played,
     type,
     table.concat(args, " "),
@@ -69,10 +69,10 @@ afterReplay = function (fn: () => void): void {
 
 addReplayLib({
   on_init() {
-    storage._REPLAY_SCRIPT_DATA = new LuaSet<String>()
+    storage._replay_script_DATA = new LuaSet<String>()
   },
   on_load() {
-    if (storage._REPLAY_SCRIPT_DATA != undefined) return
+    if (storage._replay_script_DATA != undefined) return
     script.on_event(defines.events.on_tick, () => {
       for (const fn of afterReplayFns) fn()
     })

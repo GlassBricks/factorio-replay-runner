@@ -4,12 +4,12 @@ use itertools::Itertools;
 use log::{debug, info};
 
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
-use run_downloader::FileDownloader;
 use speedrun_api::api;
 use speedrun_api::api::AsyncQuery;
 use speedrun_api::{SpeedrunApiClientAsync, types};
 use std::fs::File;
 use std::path::Path;
+use zip_downloader::FileDownloader;
 
 use factorio_manager::factorio_install_dir::FactorioInstallDir;
 

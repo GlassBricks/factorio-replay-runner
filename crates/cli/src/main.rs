@@ -6,15 +6,15 @@ use factorio_manager::{
     save_file::{SaveFile, WrittenSaveFile},
 };
 use rules::{RunRules, SrcRunRules};
-use run_downloader::{
-    FileDownloader,
-    services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
-};
 use run_replay::{ReplayReport, run_replay};
 use src_integration::run_replay_from_src_run;
 use std::{
     fs::File,
     path::{Path, PathBuf},
+};
+use zip_downloader::{
+    FileDownloader,
+    services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
 };
 
 mod rules;
