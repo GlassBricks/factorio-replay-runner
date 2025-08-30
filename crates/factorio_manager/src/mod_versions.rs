@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use log::trace;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
+use std::{collections::HashMap, path::Path};
 
 use crate::{factorio_install_dir::VersionStr, factorio_instance::FactorioInstance};
 
@@ -24,12 +24,13 @@ impl FactorioInstance {
     fn read_mod_list(&self) -> Result<Vec<ModOption>> {
         let path = self.install_dir().join("mods/mod-list.json");
         let content = fs::read_to_string(&path)?;
-        let mod_list = serde_yaml::from_str::<ModList>(&content)?;
+        let mod_list: ModList = serde_yaml::from_str(&content)?;
         Ok(mod_list.mods)
     }
 
-    pub async fn get_mod_versions(&mut self, save_name: &str) -> Result<ModVersions> {
-        self.get_output(&["--sync-mods", save_name]).await?;
+    pub async fn get_mod_versions(&mut self, save_path: &Path) -> Result<ModVersions> {
+        self.run_and_get_output(&["--sync-mods", save_path.to_str().unwrap()])
+            .await?;
 
         trace!("Synced mods with command");
 

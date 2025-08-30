@@ -1,5 +1,5 @@
 [package]
-name = "replay-runner"
+name = "factorio_manager"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,7 +11,6 @@ futures = { workspace = true }
 itertools = { workspace = true }
 tempfile = { workspace = true }
 zip = { workspace = true }
-replay-script = { path = "../replay-script" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 log = { workspace = true }

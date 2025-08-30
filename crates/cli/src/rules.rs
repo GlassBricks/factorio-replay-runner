@@ -1,4 +1,4 @@
-use crate::expected_mods::ExpectedMods;
+use factorio_manager::expected_mods::ExpectedMods;
 use replay_script::ReplayScripts;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,5 +29,5 @@ pub struct RunRules {
     #[serde(rename = "expected_mods")]
     pub expected_mods_override: Option<ExpectedMods>,
     #[serde(flatten)]
-    pub replay_checks: ReplayScripts,
+    pub replay_scripts: ReplayScripts,
 }

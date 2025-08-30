@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use log::LevelFilter;
-use replay_runner::rules::RunRules;
 use replay_script::ReplayScripts;
 use std::fs;
 use test_utils::{self, workspace_root};
@@ -27,7 +26,7 @@ fn write_all_checks() {
                 .map(|s| s.to_string())
                 .collect(),
         ),
-        replay_checks: all_scripts,
+        replay_scripts: all_scripts,
     };
 
     let rules_yaml = serde_yaml::to_string(&test_all_rules).unwrap();
@@ -53,15 +52,13 @@ async fn test_run_file() -> Result<()> {
     let rules_file_path = fixtures_dir.join(ALL_RULES_FILE);
     let output_path = test_dir.join("TEST.txt");
 
-    let result = run_file(
+    run_file(
         &test_save_path,
         &rules_file_path,
         &install_dir_path,
         &output_path,
     )
     .await?;
-
-    assert!(result.exit_success, "Replay should exit successfully");
 
     assert!(output_path.exists(), "Output file should be created");
 
@@ -75,11 +72,15 @@ async fn test_run_file() -> Result<()> {
         )
     })?;
 
-    assert_eq!(
-        output_content.trim(),
-        expected_content.trim(),
-        "Log output should match expected content"
-    );
+    if output_content.trim() != expected_content.trim() {
+        let actual_log_path = fixtures_dir.join("TEST_actual.txt");
+        fs::write(&actual_log_path, &output_content).ok();
+        assert_eq!(
+            output_content.trim(),
+            expected_content.trim(),
+            "Log output should match expected content. Actual output written to TEST_actual.txt"
+        );
+    }
 
     Ok(())
 }

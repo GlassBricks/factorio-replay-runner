@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, str::FromStr};
+use std::{
+    fmt::{self, Debug},
+    str::FromStr,
+};
 use strum::{Display, EnumString, VariantArray};
 
 include!(concat!(env!("OUT_DIR"), "/replay_scripts.rs"));
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone, VariantArray, Display, EnumString)]
-pub enum MsgType {
+#[derive(Debug, PartialEq, Eq, Copy, Clone, VariantArray, Display, EnumString, PartialOrd, Ord)]
+pub enum MsgLevel {
     Info,
     Warn,
     Error,
@@ -13,7 +16,7 @@ pub enum MsgType {
 
 pub struct ReplayMsg {
     pub time: u64,
-    pub msg_type: MsgType,
+    pub level: MsgLevel,
     pub message: String,
 }
 
@@ -29,9 +32,16 @@ impl FromStr for ReplayMsg {
         };
         Ok(ReplayMsg {
             time: parts[1].parse().map_err(|_| ())?,
-            msg_type: MsgType::try_from(parts[2]).map_err(|_| ())?,
+            level: MsgLevel::try_from(parts[2]).map_err(|_| ())?,
             message: parts[3].to_string(),
         })
+    }
+}
+
+// is NOT the inverse of from_str
+impl fmt::Display for ReplayMsg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{:5}]\t{:10}\t{}", self.level, self.time, self.message)
     }
 }
 
@@ -109,12 +119,12 @@ mod tests {
         let msg = ReplayMsg::from_str(msg);
         assert!(msg.is_ok());
         let msg = msg.unwrap();
-        assert_eq!(msg.msg_type, MsgType::Error);
+        assert_eq!(msg.level, MsgLevel::Error);
         assert_eq!(msg.time, 123);
         assert_eq!(msg.message, "Some message");
 
         for (&msg_type, time, msg) in
-            iproduct!(MsgType::VARIANTS, [1234, 2345], ["message1", "message2"])
+            iproduct!(MsgLevel::VARIANTS, [1234, 2345], ["message1", "message2"])
         {
             let formatted = ReplayMsg::from_str(
                 format!(
@@ -124,7 +134,7 @@ mod tests {
                 .as_str(),
             )
             .unwrap();
-            assert_eq!(formatted.msg_type, msg_type);
+            assert_eq!(formatted.level, msg_type);
             assert_eq!(formatted.time, time);
             assert_eq!(formatted.message, msg);
         }

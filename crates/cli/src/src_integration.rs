@@ -1,9 +1,9 @@
 use anyhow::Result;
+use factorio_manager::expected_mods::ExpectedMods;
 use itertools::Itertools;
-use log::info;
-use replay_runner::expected_mods::ExpectedMods;
-use replay_runner::rules::{RunRules, SrcRunRules};
-use replay_runner::save_file::SaveFile;
+use log::{debug, info};
+
+use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
 use run_downloader::FileDownloader;
 use speedrun_api::api;
 use speedrun_api::api::AsyncQuery;
@@ -11,12 +11,10 @@ use speedrun_api::{SpeedrunApiClientAsync, types};
 use std::fs::File;
 use std::path::Path;
 
-use replay_runner::factorio_install_dir::FactorioInstallDir;
-use replay_runner::replay_runner::ReplayLog;
+use factorio_manager::factorio_install_dir::FactorioInstallDir;
 
-use crate::run_replay;
-
-pub type RemoteReplayResult = anyhow::Result<ReplayLog>;
+use crate::rules::{RunRules, SrcRunRules};
+use crate::run_replay::{ReplayReport, run_replay};
 
 pub async fn run_replay_from_src_run(
     downloader: &mut FileDownloader,
@@ -24,54 +22,46 @@ pub async fn run_replay_from_src_run(
     factorio_dir: &FactorioInstallDir,
     rules: &SrcRunRules,
     output_dir: &Path,
-) -> RemoteReplayResult {
+) -> Result<ReplayReport> {
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)?;
 
-    info!("Fetching run data ( https://speedrun.com/runs/{} )", run_id);
+    info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
     let run = fetch_src_run(run_id).await?;
+    debug!("Fetching game and category data");
     let (game, category) = fetch_game_and_category(&run).await?;
     let (run_rules, expected_mods) = select_rules(&game, &category, &rules)?;
+
     info!("Downloading save file");
-    let mut save_file = download_run_from_description(downloader, &working_dir, run).await?;
+    let mut save_file = download_save_from_description(downloader, &working_dir, run).await?;
 
     let output_path = working_dir.join("output.log");
-    let result = run_replay(
+    run_replay(
         &factorio_dir,
         &mut save_file,
         &run_rules,
         expected_mods,
         &output_path,
     )
-    .await?;
-
-    Ok(result)
+    .await
 }
 
-async fn download_run_from_description(
+async fn download_save_from_description(
     downloader: &mut FileDownloader,
     working_dir: &std::path::PathBuf,
     run: speedrun_api::types::Run<'_>,
-) -> Result<SaveFile<File>, anyhow::Error> {
+) -> Result<WrittenSaveFile> {
     let description = run
         .comment
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Comment with link needed for run {}", run.id))?;
-    let save_file = download_run_zip(downloader, &description, working_dir).await?;
-    Ok(save_file)
-}
 
-async fn download_run_zip(
-    downloader: &mut FileDownloader,
-    description: &str,
-    working_dir: &Path,
-) -> Result<SaveFile<File>> {
+    // look for link in description
     let save_file_info = downloader.download_zip(&description, &working_dir).await?;
 
     let save_path = working_dir.join(save_file_info.name);
-    let file = File::open(save_path)?;
-    let save_file = SaveFile::new(file)?;
-    Ok(save_file)
+    let save_file = SaveFile::new(File::open(&save_path)?)?;
+    Ok(WrittenSaveFile(save_path, save_file))
 }
 
 fn select_rules<'a>(

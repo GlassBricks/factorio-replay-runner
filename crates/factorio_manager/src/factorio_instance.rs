@@ -62,7 +62,11 @@ impl FactorioInstance {
         Ok(FactorioProcess::new(child))
     }
 
-    pub async fn get_output(&self, args: &[&str]) -> Result<Output> {
+    pub fn spawn_replay(&self, save_path: &Path) -> Result<FactorioProcess> {
+        self.spawn(&["--run-replay", save_path.to_str().unwrap()])
+    }
+
+    pub async fn run_and_get_output(&self, args: &[&str]) -> Result<Output> {
         let mut cmd = self.new_run_command();
         cmd.args(args);
         debug!("Running: {:?}", &cmd);
@@ -171,7 +175,7 @@ mod tests {
     #[tokio::test]
     async fn test_output() -> Result<()> {
         let factorio = FactorioInstance::test_installation().await;
-        let stdout = factorio.get_output(&["--version"]).await?.stdout;
+        let stdout = factorio.run_and_get_output(&["--version"]).await?.stdout;
         let output = String::from_utf8(stdout)?;
         assert!(output.contains(&TEST_VERSION.to_string()));
         Ok(())

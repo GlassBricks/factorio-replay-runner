@@ -1,10 +1,11 @@
 expected_mods:
-- quality
-- base
 - elevated-rails
+- base
+- quality
 - space-age
 bad_console_commands: false
 blueprint_import: false
+log_time: true
 map_editor: false
 max_players: 1
 open_other_player: false

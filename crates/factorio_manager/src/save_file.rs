@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use itertools::Itertools;
 use std::{
+    fmt::Display,
     fs::File,
     io::{self, Read, Seek, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::SimpleFileOptions};
 
@@ -30,6 +31,8 @@ impl<F: Read + Seek> SaveFile<F> {
         &self.save_name
     }
 }
+
+pub struct WrittenSaveFile(pub PathBuf, pub SaveFile<File>);
 
 fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
     let save_name = (0..zip.len())
@@ -119,23 +122,25 @@ impl<F: Read + Seek> SaveFile<F> {
         Ok(())
     }
 
-    pub(crate) fn install_replay_script_to(
+    pub fn install_replay_script_to(
         &mut self,
-        out_save_file: &mut File,
-        replay_script: &str,
+        out_file: &mut File,
+        replay_script: impl Display,
     ) -> Result<()> {
         let ctrl_lua_path = self.inner_file_path("control.lua");
         let ctrl_lua_contents = self.get_control_lua_contents()?.to_string();
 
-        let mut zip = ZipWriter::new(out_save_file);
+        let mut zip = ZipWriter::new(out_file);
         self.copy_files_except(&mut zip, &ctrl_lua_path)?;
 
         zip.start_file(ctrl_lua_path, SimpleFileOptions::default())?;
-        zip.write_fmt(format_args!(
-            "{}\n-- Begin replay script\n",
-            ctrl_lua_contents
-        ))?;
-        zip.write_all(replay_script.as_bytes())?;
+        writeln!(
+            zip,
+            r"{ctrl_lua_contents}
+
+-- Begin replay script
+{replay_script}",
+        )?;
         Ok(())
     }
 }

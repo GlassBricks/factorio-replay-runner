@@ -1,26 +1,23 @@
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use log::{error, info};
-use replay_runner::{
+use factorio_manager::{
     factorio_install_dir::FactorioInstallDir,
     process_manager::setup_signal_handlers,
-    replay_runner::ReplayLog,
-    rules::{RunRules, SrcRunRules},
-    save_file::SaveFile,
+    save_file::{SaveFile, WrittenSaveFile},
 };
-use replay_script::MsgType;
+use rules::{RunRules, SrcRunRules};
 use run_downloader::{
     FileDownloader,
     services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
 };
-use run_replay::run_replay;
-use src_integration::{RemoteReplayResult, run_replay_from_src_run};
+use run_replay::{ReplayReport, run_replay};
+use src_integration::run_replay_from_src_run;
 use std::{
-    fmt::Display,
     fs::File,
     path::{Path, PathBuf},
 };
 
+mod rules;
 mod run_replay;
 mod src_integration;
 
@@ -112,7 +109,6 @@ async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
     let output_path = output.unwrap_or_else(|| save_file.with_extension("log"));
 
     let result = run_file(&save_file, &rules_file, &install_dir, &output_path).await;
-    print_result_summary(&result);
     Ok(result_to_exit_code(&result))
 }
 
@@ -121,7 +117,7 @@ async fn run_file(
     rules_file: &Path,
     install_dir: &Path,
     output_path: &Path,
-) -> Result<ReplayLog> {
+) -> Result<ReplayReport> {
     let install_dir = load_install_dir(install_dir).await?;
     let mut save_file = load_save_file(save_file).await?;
     let rules = load_run_rules(rules_file).await?;
@@ -147,7 +143,6 @@ async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
     } = args;
 
     let result = run_src(&run_id, &game_rules_file, &install_dir, &output_dir).await;
-    print_result_summary(&result);
     Ok(result_to_exit_code(&result))
 }
 
@@ -156,7 +151,7 @@ async fn run_src(
     game_rules_file: &Path,
     install_dir: &Path,
     output_dir: &Path,
-) -> RemoteReplayResult {
+) -> Result<ReplayReport> {
     let install_dir = load_install_dir(install_dir).await?;
     let rules = load_src_rules(game_rules_file).await?;
     let mut downloader = create_file_downloader().await?;
@@ -187,8 +182,11 @@ async fn load_install_dir(install_dir_path: &Path) -> Result<FactorioInstallDir>
     })
 }
 
-async fn load_save_file(save_file_path: &Path) -> Result<SaveFile<File>> {
-    SaveFile::new(File::open(save_file_path)?)
+async fn load_save_file(save_file_path: &Path) -> Result<WrittenSaveFile> {
+    Ok(WrittenSaveFile(
+        save_file_path.to_path_buf(),
+        SaveFile::new(File::open(save_file_path)?)?,
+    ))
 }
 
 async fn load_run_rules(rules_file_path: &Path) -> Result<RunRules> {
@@ -200,43 +198,10 @@ async fn load_src_rules(game_rules_file_path: &Path) -> Result<SrcRunRules> {
         .with_context(|| "failed to load src rules")
 }
 
-fn print_result_summary(result: &Result<ReplayLog, impl Display>) {
+fn result_to_exit_code<T>(result: &Result<ReplayReport, T>) -> i32 {
     match result {
-        Ok(replay_log) => {
-            if replay_log.exit_success {
-                info!("Replay completed successfully!");
-            } else {
-                error!("Replay failed!");
-            }
-        }
-        Err(err) => {
-            error!("{err:#}");
-        }
-    }
-}
-
-fn result_to_exit_code<T>(result: &Result<ReplayLog, T>) -> i32 {
-    match result {
-        Err(_) => 1,
-        Ok(replay_log) => {
-            if !replay_log.exit_success {
-                10
-            } else if replay_log
-                .messages
-                .iter()
-                .any(|msg| msg.msg_type == MsgType::Error)
-            {
-                1
-            } else if replay_log
-                .messages
-                .iter()
-                .any(|msg| msg.msg_type == MsgType::Warn)
-            {
-                2
-            } else {
-                0
-            }
-        }
+        Ok(report) => report.to_exit_code(),
+        Err(_) => 20,
     }
 }
 

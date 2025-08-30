@@ -23,4 +23,4 @@ yup-oauth2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-zip = { workspace = true, features = ["deflate"] }
+zip = { workspace = true }
