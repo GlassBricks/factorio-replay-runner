@@ -68,7 +68,7 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
         let name = file_id
             .url()
             .split('/')
-            .last()
+            .next_back()
             .and_then(|s| s.split('?').next())
             .unwrap_or("unknown.zip")
             .to_string();
@@ -94,7 +94,7 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
             file_id
                 .url()
                 .split('/')
-                .last()
+                .next_back()
                 .and_then(|s| s.split('?').next())
                 .unwrap_or("unknown.zip")
         })
@@ -210,7 +210,6 @@ mod tests {
         assert!(file_info.is_zip);
         // Name might be from Content-Disposition header or URL
         assert!(file_info.name.contains("Steelaxe") || file_info.name == "1d4e2.zip");
-        assert!(file_info.size > 0 || file_info.size == 0); // Size may or may not be available
     }
 
     #[tokio::test]

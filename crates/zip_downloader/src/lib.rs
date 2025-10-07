@@ -154,12 +154,12 @@ impl FileDownloader {
         download_handle
             .download(&file_path)
             .await
-            .map_err(|err| DownloadError::ServiceError(err.into()))?;
+            .map_err(DownloadError::ServiceError)?;
 
         info!("Running file checks");
         let mut reopened_file = File::open(&file_path)?;
         security::validate_downloaded_file(&mut reopened_file, &file_info, &self.security_config)
-            .map_err(|err| DownloadError::SecurityError(err.into()))?;
+            .map_err(DownloadError::SecurityError)?;
 
         Ok(DownloadedFile {
             name: file_info.name,

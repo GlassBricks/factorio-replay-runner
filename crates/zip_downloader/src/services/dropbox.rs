@@ -52,7 +52,7 @@ async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta>
     let client = UserAuthDefaultClient::new(auth);
 
     let arg = file_id.inner();
-    let metadata = get_shared_link_metadata(&client, &arg).await?;
+    let metadata = get_shared_link_metadata(&client, arg).await?;
 
     match metadata {
         SharedLinkMetadata::File(file_meta) => {

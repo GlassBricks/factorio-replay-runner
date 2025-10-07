@@ -40,10 +40,10 @@ fn validate_file_extension(filename: &str, config: &SecurityConfig) -> Result<()
         .and_then(|ext| ext.to_str())
         .map(|ext| format!(".{}", ext.to_lowercase()));
 
-    if let Some(ext) = extension {
-        if config.allowed_extensions.contains(&ext) {
-            return Ok(());
-        }
+    if let Some(ext) = extension
+        && config.allowed_extensions.contains(&ext)
+    {
+        return Ok(());
     }
 
     bail!(
@@ -278,7 +278,7 @@ mod tests {
 
         // Add 5 files
         for i in 0..5 {
-            zip.start_file(&format!("file{}.txt", i), FileOptions::<()>::default())
+            zip.start_file(format!("file{}.txt", i), FileOptions::<()>::default())
                 .unwrap();
             zip.write_all(b"test content").unwrap();
         }
@@ -329,7 +329,7 @@ mod tests {
         let mut zip = ZipWriter::new(temp_file.as_file_mut());
 
         for i in 0..3 {
-            zip.start_file(&format!("file{}.txt", i), FileOptions::<()>::default())
+            zip.start_file(format!("file{}.txt", i), FileOptions::<()>::default())
                 .unwrap();
             let content = vec![b'A'; 800];
             zip.write_all(&content).unwrap();

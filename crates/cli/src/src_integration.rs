@@ -30,16 +30,16 @@ pub async fn run_replay_from_src_run(
     let run = fetch_src_run(run_id).await?;
     debug!("Fetching game and category data");
     let (game, category) = fetch_game_and_category(&run).await?;
-    let (run_rules, expected_mods) = select_rules(&game, &category, &rules)?;
+    let (run_rules, expected_mods) = select_rules(&game, &category, rules)?;
 
     info!("Downloading save file");
     let mut save_file = download_save_from_description(downloader, &working_dir, run).await?;
 
     let output_path = working_dir.join("output.log");
     run_replay(
-        &factorio_dir,
+        factorio_dir,
         &mut save_file,
-        &run_rules,
+        run_rules,
         expected_mods,
         &output_path,
     )
@@ -48,7 +48,7 @@ pub async fn run_replay_from_src_run(
 
 async fn download_save_from_description(
     downloader: &mut FileDownloader,
-    working_dir: &std::path::PathBuf,
+    working_dir: &Path,
     run: speedrun_api::types::Run<'_>,
 ) -> Result<WrittenSaveFile> {
     let description = run
@@ -57,7 +57,7 @@ async fn download_save_from_description(
         .ok_or_else(|| anyhow::anyhow!("Comment with link needed for run {}", run.id))?;
 
     // look for link in description
-    let save_file_info = downloader.download_zip(&description, &working_dir).await?;
+    let save_file_info = downloader.download_zip(description, working_dir).await?;
 
     let save_path = working_dir.join(save_file_info.name);
     let save_file = SaveFile::new(File::open(&save_path)?)?;
@@ -121,7 +121,7 @@ fn normalize_name(name: &str) -> String {
         .collect()
 }
 
-async fn fetch_src_run(run_id: &str) -> Result<speedrun_api::types::Run> {
+async fn fetch_src_run(run_id: &'_ str) -> Result<speedrun_api::types::Run<'_>> {
     let client = SpeedrunApiClientAsync::new().unwrap();
 
     let query = api::runs::Run::builder().id(run_id).build()?;

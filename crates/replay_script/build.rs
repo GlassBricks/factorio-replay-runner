@@ -172,13 +172,14 @@ fn formatter_for_type(type_name: &str) -> &str {
 fn generate_file_list_for_replay_scripts(out_dir: &str) {
     let mut scripts = Vec::new();
 
-    for entry in glob("tstl_src/rules/*.ts").expect("Failed to read glob pattern") {
-        if let Ok(path) = entry {
-            if let Some(stem) = path.file_stem() {
-                if let Some(name) = stem.to_str() {
-                    scripts.push(parse_script_metadata(name, &path));
-                }
-            }
+    for path in glob("tstl_src/rules/*.ts")
+        .expect("Failed to read glob pattern")
+        .flatten()
+    {
+        if let Some(stem) = path.file_stem()
+            && let Some(name) = stem.to_str()
+        {
+            scripts.push(parse_script_metadata(name, &path));
         }
     }
 

@@ -78,7 +78,7 @@ async fn install_replay_script(
     let replay_script = &rules.replay_scripts;
     debug!("Enabled checks: {:?}", replay_script);
     let installed_save_path = save_path.with_extension("installed.zip");
-    save_file.install_replay_script_to(&mut File::create(&installed_save_path)?, &replay_script)?;
+    save_file.install_replay_script_to(&mut File::create(&installed_save_path)?, replay_script)?;
     Ok(installed_save_path)
 }
 
@@ -89,16 +89,16 @@ async fn run_and_log_replay(
 ) -> Result<ReplayReport> {
     info!("Starting replay");
     info!("Writing to: {}", log_path.display());
-    let mut process = instance.spawn_replay(&installed_save_path)?;
+    let mut process = instance.spawn_replay(installed_save_path)?;
     let max_msg_level = record_output(&mut process, log_path).await?;
 
     let exit_status = process.wait().await?;
     let exited_successfully = exit_status.success();
 
-    return Ok(ReplayReport {
+    Ok(ReplayReport {
         max_msg_level,
         exited_successfully,
-    });
+    })
 }
 
 /// returns when stdout closes.
@@ -109,7 +109,7 @@ async fn record_output(process: &mut FactorioProcess, log_path: &Path) -> Result
     let mut max_level = MsgLevel::Info;
 
     while let Some(msg) = msgs.next().await {
-        write!(log_file, "{}\n", msg)?;
+        writeln!(log_file, "{}", msg)?;
         max_level = max_level.max(msg.level);
     }
     Ok(max_level)

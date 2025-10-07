@@ -36,7 +36,6 @@ pub struct WrittenSaveFile(pub PathBuf, pub SaveFile<File>);
 
 fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
     let save_name = (0..zip.len())
-        .into_iter()
         .filter_map(|i| zip.by_index_raw(i).ok().and_then(|f| f.enclosed_name()))
         .filter_map(|p| {
             p.components()
@@ -74,7 +73,7 @@ impl<F: Read + Seek> SaveFile<F> {
             .into_owned()
     }
 
-    fn get_inner_file(&mut self, path: impl AsRef<Path>) -> Result<ZipFile<F>> {
+    fn get_inner_file(&'_ mut self, path: impl AsRef<Path>) -> Result<ZipFile<'_, F>> {
         let path = self.inner_file_path(path);
         self.zip
             .by_name(&path)
@@ -207,8 +206,8 @@ mod tests {
         let VersionStr(major, minor, patch) = TEST_VERSION;
         // Create version bytes in little-endian format
         let mut version_bytes = Vec::new();
-        version_bytes.extend_from_slice(&(major as u16).to_le_bytes());
-        version_bytes.extend_from_slice(&(minor as u16).to_le_bytes());
+        version_bytes.extend_from_slice(&major.to_le_bytes());
+        version_bytes.extend_from_slice(&minor.to_le_bytes());
         version_bytes.extend_from_slice(&patch.to_le_bytes());
 
         let version_data = String::from_utf8_lossy(&version_bytes).into_owned();

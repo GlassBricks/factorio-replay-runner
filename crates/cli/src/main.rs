@@ -160,7 +160,7 @@ async fn run_src(
 
 async fn create_file_downloader() -> Result<FileDownloader> {
     dotenvy::dotenv()?;
-    if !std::env::var("AUTO_DOWNLOAD_RUNS").is_ok() {
+    if std::env::var("AUTO_DOWNLOAD_RUNS").is_err() {
         panic!(
             "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
         );

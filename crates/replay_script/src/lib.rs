@@ -69,16 +69,18 @@ mod tests {
 
     #[test]
     fn test_configure_script() {
-        let mut scripts = ReplayScripts::default();
-        scripts.blueprint_import = true;
-        scripts.win_on_rocket_launch = true;
-        scripts.max_players = Some(137);
+            let scripts = ReplayScripts {
+                blueprint_import: true,
+                win_on_rocket_launch: true,
+                max_players: Some(137),
+                ..Default::default()
+            };
 
-        let output = scripts.to_string();
-        assert!(!output.contains("blueprint_import"));
-        assert!(output.contains("win_on_rocket_launch"));
-        assert!(output.contains("local maxPlayers = 137"));
-    }
+            let output = scripts.to_string();
+            assert!(!output.contains("blueprint_import"));
+            assert!(output.contains("win_on_rocket_launch"));
+            assert!(output.contains("local maxPlayers = 137"));
+        }
 
     #[test]
     fn test_all_enabled() {
@@ -91,9 +93,8 @@ mod tests {
     #[test]
     fn test_no_export_in_replay_script() {
         let output = ReplayScripts::default().to_string();
-        for pattern in ["return ____exports"] {
-            assert!(!output.contains(pattern));
-        }
+        let pattern = "return ____exports";
+        assert!(!output.contains(pattern));
     }
 
     #[test]
@@ -101,15 +102,15 @@ mod tests {
         let scripts: ReplayScripts = serde_yaml::from_str("{}").unwrap();
 
         assert_eq!(scripts.max_players, Some(1));
-        assert_eq!(scripts.bad_console_commands, false);
-        assert_eq!(scripts.blueprint_import, false);
-        assert_eq!(scripts.map_editor, false);
-        assert_eq!(scripts.open_other_player, false);
-        assert_eq!(scripts.win_on_rocket_launch, false);
+        assert!(!scripts.bad_console_commands);
+        assert!(!scripts.blueprint_import);
+        assert!(!scripts.map_editor);
+        assert!(!scripts.open_other_player);
+        assert!(!scripts.win_on_rocket_launch);
 
         // Test partial deserialization preserves defaults for missing fields
         let scripts: ReplayScripts = serde_yaml::from_str("win_on_rocket_launch: true").unwrap();
-        assert_eq!(scripts.win_on_rocket_launch, true);
+        assert!(scripts.win_on_rocket_launch);
         assert_eq!(scripts.max_players, Some(1)); // Should still use configured default
     }
 

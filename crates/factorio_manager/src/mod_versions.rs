@@ -39,13 +39,13 @@ impl FactorioInstance {
             .with_context(|| "Reading mod-list.json")?
             .into_iter()
             .filter(|mod_option| mod_option.enabled)
-            .filter_map(|mod_option| {
-                Some((
+            .map(|mod_option| {
+                (
                     mod_option.name,
                     mod_option
                         .version
                         .and_then(|version| VersionStr::try_from(version).ok()),
-                ))
+                )
             })
             .collect::<HashMap<_, _>>();
 
