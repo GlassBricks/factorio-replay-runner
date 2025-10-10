@@ -1,95 +1,19 @@
 use crate::services::{FileMeta, FileService};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::path::Path;
+use tokio::io::AsyncWriteExt as _;
 
-use yup_oauth2::{
-    AccessToken, ServiceAccountAuthenticator, ServiceAccountKey,
-    authenticator::DefaultAuthenticator,
-};
-
-const DRIVE_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
-const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_PUBLIC_BASE: &str = "https://drive.google.com/uc?export=download&id";
-
-pub async fn read_service_account_key_from_file<P: AsRef<std::path::Path>>(
-    path: P,
-) -> Result<ServiceAccountKey> {
-    Ok(yup_oauth2::read_service_account_key(path).await?)
-}
-
-pub async fn read_service_account_key_from_env() -> Result<ServiceAccountKey> {
-    read_service_account_key_from_file(std::env::var("GOOGLE_SERVICE_ACCOUNT_PATH")?).await
-}
-
-async fn build_authenticated_request(
-    client: &reqwest::Client,
-    url: &str,
-    access_token: Option<&AccessToken>,
-) -> Result<reqwest::RequestBuilder> {
-    let mut request = client.get(url);
-
-    if let Some(token) = access_token {
-        request = request.bearer_auth(token.token().unwrap_or_default());
-    }
-
-    Ok(request)
-}
-
-fn api_metadata_url(file_id: &str) -> String {
-    format!(
-        "{}/{}?fields=id,name,size,mimeType",
-        DRIVE_API_BASE, file_id
-    )
-}
-
-fn api_download_url(file_id: &str) -> String {
-    format!("{}/{}?alt=media", DRIVE_API_BASE, file_id)
-}
 
 fn public_download_url(file_id: &str) -> String {
     format!("{}={}", DRIVE_PUBLIC_BASE, file_id)
 }
 
-async fn get_authenticated_file_info(
-    client: &reqwest::Client,
-    file_id: &str,
-    token: &AccessToken,
-) -> Result<FileMeta> {
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    struct ApiResponse {
-        name: String,
-        size: String,
-        #[serde(rename = "mimeType")]
-        mime_type: String,
-    }
-
-    let url = api_metadata_url(file_id);
-    let request = build_authenticated_request(client, &url, Some(token)).await?;
-    let response = request.send().await?;
-
-    if !response.status().is_success() {
-        anyhow::bail!("Failed to get file metadata: HTTP {}", response.status());
-    }
-
-    let api_response: ApiResponse = response.json().await?;
-
-    Ok(FileMeta {
-        name: api_response.name,
-        size: api_response.size.parse().unwrap_or(0),
-        is_zip: api_response.mime_type.to_lowercase().contains("zip"),
-    })
-}
-
-async fn get_unauthenticated_file_info(
-    client: &reqwest::Client,
-    file_id: &str,
-) -> Result<FileMeta> {
+async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMeta> {
     let url = public_download_url(file_id);
     let response = client.head(&url).send().await?;
 
@@ -127,32 +51,23 @@ async fn get_unauthenticated_file_info(
     Ok(FileMeta { name, size, is_zip })
 }
 
-async fn download_file_streaming(
-    file_id: &str,
-    dest: &Path,
-    token: Option<&AccessToken>,
-) -> Result<()> {
-    use std::{fs::File, io::Write};
+async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<()> {
     let client = reqwest::Client::new();
-
-    let url = match token {
-        Some(_) => api_download_url(file_id),
-        None => public_download_url(file_id),
-    };
-
-    let request = build_authenticated_request(&client, &url, token).await?;
-    let response = request.send().await?;
+    let url = public_download_url(file_id);
+    let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {
         anyhow::bail!("Failed to download file: HTTP {}", response.status());
     }
 
-    let mut dest_file = File::create(dest)?;
+    let mut file = tokio::fs::File::create(dest).await?;
     let mut stream = response.bytes_stream();
+
     while let Some(chunk) = stream.next().await {
-        dest_file.write_all(&chunk?)?;
+        file.write_all(&chunk?).await?;
     }
-    dest_file.flush()?;
+
+    file.flush().await?;
 
     Ok(())
 }
@@ -164,43 +79,17 @@ lazy_static! {
     ];
 }
 
-pub struct GoogleDriveService {
-    service_account_key: Option<ServiceAccountKey>,
-    authenticator: Option<DefaultAuthenticator>,
-}
+pub struct GoogleDriveService;
 
 impl GoogleDriveService {
-    pub fn new(service_account_key: Option<ServiceAccountKey>) -> Self {
-        Self {
-            service_account_key,
-            authenticator: None,
-        }
+    pub fn new() -> Self {
+        Self
     }
+}
 
-    pub async fn from_env() -> Result<Self> {
-        let service_account_key = read_service_account_key_from_env().await?;
-        Ok(Self::new(Some(service_account_key)))
-    }
-
-    async fn get_authenticator(&mut self) -> Result<Option<&DefaultAuthenticator>> {
-        if self.authenticator.is_none() && self.service_account_key.is_some() {
-            let authenticator =
-                ServiceAccountAuthenticator::builder(self.service_account_key.clone().unwrap())
-                    .build()
-                    .await?;
-            self.authenticator = Some(authenticator);
-        }
-        Ok(self.authenticator.as_ref())
-    }
-
-    async fn get_token(&mut self) -> Result<Option<AccessToken>> {
-        let Some(auth) = self.get_authenticator().await? else {
-            return Ok(None);
-        };
-        auth.token(&[DRIVE_READONLY_SCOPE])
-            .await
-            .map(Some)
-            .with_context(|| "Getting g_drive auth token")
+impl Default for GoogleDriveService {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -222,19 +111,12 @@ impl FileService for GoogleDriveService {
     }
 
     async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
-        let token = self.get_token().await?;
         let client = reqwest::Client::new();
-
-        match token.as_ref() {
-            Some(token) => get_authenticated_file_info(&client, file_id, token).await,
-            None => get_unauthenticated_file_info(&client, file_id).await,
-        }
+        get_file_info(&client, file_id).await
     }
 
     async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
-        let token = self.get_token().await?;
-
-        download_file_streaming(file_id, dest, token.as_ref()).await
+        download_file_streaming(file_id, dest).await
     }
 }
 
@@ -265,7 +147,10 @@ mod tests {
         }
     }
 
-    async fn file_info_test(service: &mut GoogleDriveService) {
+    #[tokio::test]
+    #[ignore]
+    async fn test_get_file_info() {
+        let mut service = GoogleDriveService::new();
         let file_info = service
             .get_file_info(&TEST_FILE_ID.to_string())
             .await
@@ -275,7 +160,10 @@ mod tests {
         assert!(file_info.is_zip);
     }
 
-    async fn download_test(service: &mut GoogleDriveService) {
+    #[tokio::test]
+    #[ignore]
+    async fn test_download() {
+        let mut service = GoogleDriveService::new();
         let temp_file = NamedTempFile::new().unwrap();
         service
             .download(&TEST_FILE_ID.to_string(), temp_file.path())
@@ -285,27 +173,5 @@ mod tests {
         assert!(temp_file.path().exists());
         let metadata = std::fs::metadata(temp_file.path()).unwrap();
         assert_eq!(metadata.len(), 119);
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_service_unauthenticated() {
-        let mut service = GoogleDriveService::new(None);
-        file_info_test(&mut service).await;
-        download_test(&mut service).await;
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_service_authenticated() {
-        dotenvy::dotenv().ok();
-        let Ok(mut service) = GoogleDriveService::from_env().await else {
-            if std::env::var("SKIP_SERVICE_TESTS").is_ok() {
-                return;
-            }
-            panic!("Failed to create service");
-        };
-        file_info_test(&mut service).await;
-        download_test(&mut service).await;
     }
 }

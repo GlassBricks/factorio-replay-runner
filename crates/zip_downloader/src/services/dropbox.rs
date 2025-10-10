@@ -1,25 +1,10 @@
 use crate::{FileMeta, services::FileService};
 use anyhow::Result;
 use async_trait::async_trait;
+use futures::StreamExt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{env, path::Path};
-use tokio::io::AsyncReadExt;
-use tokio_util::compat::FuturesAsyncReadCompatExt;
-
-use dropbox_sdk::{
-    async_routes::sharing::{get_shared_link_file, get_shared_link_metadata},
-    default_async_client::UserAuthDefaultClient,
-    oauth2::Authorization,
-    sharing::{GetSharedLinkFileArg, SharedLinkMetadata},
-};
-
-const DROPBOX_TOKEN_ENV: &str = "DROPBOX_TOKEN";
-
-pub async fn read_dropbox_token_from_env() -> Result<String> {
-    env::var(DROPBOX_TOKEN_ENV)
-        .map_err(|_| anyhow::anyhow!("DROPBOX_TOKEN environment variable not set"))
-}
+use std::path::Path;
 
 lazy_static! {
     static ref DROPBOX_URL_PATTERNS: [Regex; 2] = [
@@ -29,104 +14,104 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DropboxFileId(GetSharedLinkFileArg);
+pub struct DropboxFileId(String);
+
 impl DropboxFileId {
-    pub fn new(arg: String) -> Self {
-        Self(GetSharedLinkFileArg::new(arg))
+    pub fn new(url: String) -> Self {
+        Self(url)
     }
 
-    pub fn inner(&self) -> &GetSharedLinkFileArg {
+    pub fn url(&self) -> &str {
         &self.0
+    }
+
+    fn to_direct_download_url(&self) -> String {
+        self.0
+            .replace("?dl=0", "?dl=1")
+            .replace("www.dropbox.com", "dl.dropboxusercontent.com")
     }
 }
 
 impl std::fmt::Display for DropboxFileId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.url)
+        write!(f, "{}", self.0)
     }
 }
 
-async fn get_file_info(file_id: &DropboxFileId, token: &str) -> Result<FileMeta> {
-    #[expect(deprecated)]
-    let auth = Authorization::from_long_lived_access_token(token.to_string());
-    let client = UserAuthDefaultClient::new(auth);
+async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta> {
+    let client = reqwest::Client::new();
+    let url = file_id.to_direct_download_url();
+    let response = client.head(&url).send().await?;
 
-    let arg = file_id.inner();
-    let metadata = get_shared_link_metadata(&client, arg).await?;
-
-    match metadata {
-        SharedLinkMetadata::File(file_meta) => {
-            let is_zip = file_meta.name.to_lowercase().ends_with(".zip");
-            Ok(FileMeta {
-                name: file_meta.name,
-                size: file_meta.size,
-                is_zip,
-            })
-        }
-        SharedLinkMetadata::Folder(_) => {
-            anyhow::bail!(
-                "Expected file but got folder at URL: {}",
-                file_id.inner().url
-            )
-        }
-        _ => {
-            anyhow::bail!("Unexpected metadata type for URL: {}", file_id.inner().url)
-        }
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to get file metadata: HTTP {}", response.status());
     }
+
+    let headers = response.headers();
+
+    let name = headers
+        .get("content-disposition")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|disposition| {
+            disposition
+                .split("filename=")
+                .nth(1)
+                .map(|s| s.trim_matches('"'))
+        })
+        .or_else(|| {
+            file_id
+                .url()
+                .split('/')
+                .find(|s| s.ends_with(".zip"))
+        })
+        .unwrap_or("unknown.zip")
+        .to_string();
+
+    let size = headers
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
+    let is_zip = name.to_lowercase().ends_with(".zip");
+
+    Ok(FileMeta { name, size, is_zip })
 }
 
-async fn download_file(file_id: &DropboxFileId, dest: &Path, token: &str) -> Result<()> {
-    use std::{fs::File, io::Write};
+async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
 
-    #[expect(deprecated)]
-    let auth = Authorization::from_long_lived_access_token(token.to_string());
-    let client = UserAuthDefaultClient::new(auth);
+    let client = reqwest::Client::new();
+    let url = file_id.to_direct_download_url();
+    let response = client.get(&url).send().await?;
 
-    let response = get_shared_link_file(&client, file_id.inner(), None, None).await?;
-
-    if let Some(reader) = response.body {
-        let mut dest_file = File::create(dest)?;
-        let mut compat_reader = reader.compat();
-        let mut buffer = [0; 8192];
-
-        loop {
-            match compat_reader.read(&mut buffer).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    dest_file.write_all(&buffer[..n])?;
-                }
-                Err(e) => {
-                    anyhow::bail!("Read error: {}", e);
-                }
-            }
-        }
-        dest_file.flush()?;
-    } else {
-        anyhow::bail!("No response body received from Dropbox");
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to download file: HTTP {}", response.status());
     }
+
+    let mut file = tokio::fs::File::create(dest).await?;
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        file.write_all(&chunk?).await?;
+    }
+
+    file.flush().await?;
 
     Ok(())
 }
 
-pub struct DropboxService {
-    token: Option<String>,
-}
+pub struct DropboxService;
 
 impl DropboxService {
-    pub fn new(token: Option<String>) -> Self {
-        Self { token }
+    pub fn new() -> Self {
+        Self
     }
+}
 
-    pub async fn from_env() -> anyhow::Result<Self> {
-        let token = read_dropbox_token_from_env().await?;
-        Ok(Self::new(Some(token)))
-    }
-
-    async fn ensure_token(&self) -> Result<String> {
-        match &self.token {
-            Some(token) => Ok(token.clone()),
-            None => read_dropbox_token_from_env().await,
-        }
+impl Default for DropboxService {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -147,13 +132,11 @@ impl FileService for DropboxService {
     }
 
     async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
-        let token = self.ensure_token().await?;
-        get_file_info(file_id, &token).await
+        get_file_info(file_id).await
     }
 
     async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
-        let token = self.ensure_token().await?;
-        download_file(file_id, dest, &token).await
+        download_file(file_id, dest).await
     }
 }
 
@@ -213,34 +196,17 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn test_service_with_token() {
-        dotenvy::dotenv().ok();
+    async fn test_service() {
+        let mut service = DropboxService::new();
 
-        let Ok(mut service) = DropboxService::from_env().await else {
-            eprintln!("Skipping Dropbox integration test - DROPBOX_TOKEN not set");
-            return;
-        };
-
-        match file_info_test(&mut service, TEST_URL).await {
-            Ok(_) => {
-                download_test(&mut service, TEST_URL).await.unwrap();
-            }
-            Err(_) => {
-                panic!("Test failed - likely due to expired token or missing sharing.read scope");
-            }
-        }
+        file_info_test(&mut service, TEST_URL).await.unwrap();
+        download_test(&mut service, TEST_URL).await.unwrap();
     }
 
     #[tokio::test]
     #[ignore]
     async fn test_file_downloader_integration() -> anyhow::Result<()> {
-        dotenvy::dotenv().ok();
-
-        let Ok(service) = DropboxService::from_env().await else {
-            eprintln!("Skipping FileDownloader integration test - DROPBOX_TOKEN not set");
-            return Ok(());
-        };
-
+        let service = DropboxService::new();
         let mut downloader = FileDownloader::builder().add_service(service).build();
 
         let (file, info) = downloader.download_zip_to_temp(TEST_URL).await?;

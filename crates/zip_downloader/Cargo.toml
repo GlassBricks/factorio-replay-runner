@@ -15,11 +15,7 @@ tempfile = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 zip = { workspace = true }
-dotenvy = { workspace = true }
-dropbox-sdk = { workspace = true }
-tokio-util = { workspace = true }
 serde = { workspace = true }
-yup-oauth2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

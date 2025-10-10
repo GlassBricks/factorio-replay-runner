@@ -160,7 +160,6 @@ async fn run_src(
 }
 
 async fn create_file_downloader() -> Result<FileDownloader> {
-    dotenvy::dotenv()?;
     if std::env::var("AUTO_DOWNLOAD_RUNS").is_err() {
         panic!(
             "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
@@ -168,8 +167,8 @@ async fn create_file_downloader() -> Result<FileDownloader> {
     }
 
     Ok(FileDownloader::builder()
-        .add_service(GoogleDriveService::from_env().await?)
-        .add_service(DropboxService::from_env().await?)
+        .add_service(GoogleDriveService::new())
+        .add_service(DropboxService::new())
         .add_service(SpeedrunService::new())
         .build())
 }
