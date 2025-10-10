@@ -19,6 +19,7 @@ use zip_downloader::{
 
 mod config;
 mod database;
+mod run_lookup;
 mod run_replay;
 mod src_integration;
 

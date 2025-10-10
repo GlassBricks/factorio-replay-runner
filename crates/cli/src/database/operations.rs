@@ -10,13 +10,13 @@ pub async fn insert_run(db: &Database, new_run: NewRun) -> Result<()> {
     sqlx::query!(
         r#"
         INSERT INTO runs (
-            run_id, game_name, category_name, runner_name, submitted_date,
+            run_id, game_id, category_id, runner_name, submitted_date,
             status, error_message, verification_status, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
         "#,
         new_run.run_id,
-        new_run.game_name,
-        new_run.category_name,
+        new_run.game_id,
+        new_run.category_id,
         new_run.runner_name,
         new_run.submitted_date,
         status,
@@ -88,7 +88,7 @@ pub async fn get_run(db: &Database, run_id: &str) -> Result<Option<Run>> {
     let run = sqlx::query_as!(
         Run,
         r#"
-        SELECT run_id, game_name, category_name, runner_name, submitted_date,
+        SELECT run_id, game_id, category_id, runner_name, submitted_date,
                status, error_message, verification_status, created_at, updated_at
         FROM runs
         WHERE run_id = ?
@@ -107,7 +107,7 @@ pub async fn get_next_discovered_run(db: &Database) -> Result<Option<Run>> {
     let run = sqlx::query_as!(
         Run,
         r#"
-        SELECT run_id, game_name, category_name, runner_name, submitted_date,
+        SELECT run_id, game_id, category_id, runner_name, submitted_date,
                status, error_message, verification_status, created_at, updated_at
         FROM runs
         WHERE status = ?
@@ -124,20 +124,20 @@ pub async fn get_next_discovered_run(db: &Database) -> Result<Option<Run>> {
 
 pub async fn upsert_poll_state(
     db: &Database,
-    game_name: &str,
-    category_name: &str,
+    game_id: &str,
+    category_id: &str,
     last_poll_time: &str,
     last_poll_success: &str,
 ) -> Result<()> {
     sqlx::query!(
         r#"
-        INSERT INTO poll_state (game_name, category_name, last_poll_time, last_poll_success)
+        INSERT INTO poll_state (game_id, category_id, last_poll_time, last_poll_success)
         VALUES (?, ?, ?, ?)
-        ON CONFLICT (game_name, category_name)
+        ON CONFLICT (game_id, category_id)
         DO UPDATE SET last_poll_time = ?, last_poll_success = ?
         "#,
-        game_name,
-        category_name,
+        game_id,
+        category_id,
         last_poll_time,
         last_poll_success,
         last_poll_time,
@@ -151,18 +151,18 @@ pub async fn upsert_poll_state(
 
 pub async fn get_poll_state(
     db: &Database,
-    game_name: &str,
-    category_name: &str,
+    game_id: &str,
+    category_id: &str,
 ) -> Result<Option<PollState>> {
     let state = sqlx::query_as!(
         PollState,
         r#"
-        SELECT game_name, category_name, last_poll_time, last_poll_success
+        SELECT game_id, category_id, last_poll_time, last_poll_success
         FROM poll_state
-        WHERE game_name = ? AND category_name = ?
+        WHERE game_id = ? AND category_id = ?
         "#,
-        game_name,
-        category_name
+        game_id,
+        category_id
     )
     .fetch_optional(db.pool())
     .await?;
@@ -178,15 +178,15 @@ mod tests {
     async fn test_insert_and_get_run() {
         let db = Database::in_memory().await.unwrap();
 
-        let new_run = NewRun::new("run123", "factorio", "any%", "2024-01-01T00:00:00Z")
+        let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", "2024-01-01T00:00:00Z")
             .with_runner("speedrunner");
 
         insert_run(&db, new_run).await.unwrap();
 
         let run = get_run(&db, "run123").await.unwrap().unwrap();
         assert_eq!(run.run_id, "run123");
-        assert_eq!(run.game_name, "factorio");
-        assert_eq!(run.category_name, "any%");
+        assert_eq!(run.game_id, "game_id_1");
+        assert_eq!(run.category_id, "cat_id_1");
         assert_eq!(run.runner_name, Some("speedrunner".to_string()));
         assert_eq!(run.run_status().unwrap(), RunStatus::Discovered);
     }
@@ -195,7 +195,7 @@ mod tests {
     async fn test_update_run_status() {
         let db = Database::in_memory().await.unwrap();
 
-        let new_run = NewRun::new("run123", "factorio", "any%", "2024-01-01T00:00:00Z");
+        let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", "2024-01-01T00:00:00Z");
         insert_run(&db, new_run).await.unwrap();
 
         mark_run_processing(&db, "run123").await.unwrap();
@@ -214,19 +214,19 @@ mod tests {
 
         insert_run(
             &db,
-            NewRun::new("run1", "factorio", "any%", "2024-01-03T00:00:00Z"),
+            NewRun::new("run1", "game_id_1", "cat_id_1", "2024-01-03T00:00:00Z"),
         )
         .await
         .unwrap();
         insert_run(
             &db,
-            NewRun::new("run2", "factorio", "any%", "2024-01-01T00:00:00Z"),
+            NewRun::new("run2", "game_id_1", "cat_id_1", "2024-01-01T00:00:00Z"),
         )
         .await
         .unwrap();
         insert_run(
             &db,
-            NewRun::new("run3", "factorio", "any%", "2024-01-02T00:00:00Z"),
+            NewRun::new("run3", "game_id_1", "cat_id_1", "2024-01-02T00:00:00Z"),
         )
         .await
         .unwrap();
@@ -241,32 +241,32 @@ mod tests {
 
         upsert_poll_state(
             &db,
-            "factorio",
-            "any%",
+            "game_id_1",
+            "cat_id_1",
             "2024-01-01T00:00:00Z",
             "2024-01-01T00:00:00Z",
         )
         .await
         .unwrap();
 
-        let state = get_poll_state(&db, "factorio", "any%")
+        let state = get_poll_state(&db, "game_id_1", "cat_id_1")
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(state.game_name, "factorio");
-        assert_eq!(state.category_name, "any%");
+        assert_eq!(state.game_id, "game_id_1");
+        assert_eq!(state.category_id, "cat_id_1");
 
         upsert_poll_state(
             &db,
-            "factorio",
-            "any%",
+            "game_id_1",
+            "cat_id_1",
             "2024-01-02T00:00:00Z",
             "2024-01-02T00:00:00Z",
         )
         .await
         .unwrap();
 
-        let state = get_poll_state(&db, "factorio", "any%")
+        let state = get_poll_state(&db, "game_id_1", "cat_id_1")
             .await
             .unwrap()
             .unwrap();

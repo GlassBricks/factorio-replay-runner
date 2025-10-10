@@ -1,12 +1,11 @@
 use anyhow::Result;
 use factorio_manager::expected_mods::ExpectedMods;
-use itertools::Itertools;
-use log::{debug, info};
+use log::info;
 
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
 use speedrun_api::api;
 use speedrun_api::api::AsyncQuery;
-use speedrun_api::{SpeedrunApiClientAsync, types};
+use speedrun_api::SpeedrunApiClientAsync;
 use std::fs::File;
 use std::path::Path;
 use zip_downloader::FileDownloader;
@@ -28,9 +27,7 @@ pub async fn run_replay_from_src_run(
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
     let run = fetch_src_run(run_id).await?;
-    debug!("Fetching game and category data");
-    let (game, category) = fetch_game_and_category(&run).await?;
-    let (run_rules, expected_mods) = select_rules(&game, &category, rules)?;
+    let (run_rules, expected_mods) = select_rules(&run, rules)?;
 
     info!("Downloading save file");
     let mut save_file = download_save_from_description(downloader, &working_dir, run).await?;
@@ -65,60 +62,31 @@ async fn download_save_from_description(
 }
 
 fn select_rules<'a>(
-    game: &types::Game<'_>,
-    category: &types::Category<'_>,
+    run: &speedrun_api::types::Run<'_>,
     rules: &'a SrcRunRules,
 ) -> Result<(&'a RunRules, &'a ExpectedMods)> {
-    let orig_game_name = &game.names.international;
-    let orig_category_name = &category.name;
-    let game_name = normalize_name(orig_game_name);
-    let category_name = normalize_name(orig_category_name);
+    let game_id = run.game.to_string();
+    let category_id = run.category.to_string();
 
-    let game_rules = rules
-        .games
-        .iter()
-        .find(|(key, _)| normalize_name(key) == game_name)
-        .map(|(_, rules)| rules)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Game rules not configured for '{}' (normalized: '{}')",
-                game.names.international,
-                game_name
-            )
-        })?;
+    let game_config = rules.games.get(&game_id).ok_or_else(|| {
+        anyhow::anyhow!("No rules configured for game ID: {}", game_id)
+    })?;
 
-    let category_rules = game_rules
-        .categories
-        .iter()
-        .find(|(key, _)| normalize_name(key) == category_name)
-        .map(|(_, rules)| rules)
-        .ok_or_else(|| {
-            let existing_categories = game_rules.categories.keys() .join(", ");
-            anyhow::anyhow!(
-                "Category rules not configured for '{}' (normalized: '{}'). Available categories: {}",
-                category.name,
-                category_name,
-                existing_categories
-            )
-        })?;
+    let category_config = game_config.categories.get(&category_id).ok_or_else(|| {
+        anyhow::anyhow!("No rules configured for category ID: {}", category_id)
+    })?;
 
-    info!("Game: {}, Category: {}", orig_game_name, orig_category_name);
+    let game_name = game_config.name.as_deref().unwrap_or(&game_id);
+    let category_name = category_config.name.as_deref().unwrap_or(&category_id);
+    info!("Game: {}, Category: {}", game_name, category_name);
 
-    let run_rules = &category_rules.run_rules;
-
-    let expected_mods = &run_rules
+    let run_rules = &category_config.run_rules;
+    let expected_mods = run_rules
         .expected_mods_override
         .as_ref()
-        .unwrap_or(&game_rules.expected_mods);
+        .unwrap_or(&game_config.expected_mods);
 
     Ok((run_rules, expected_mods))
-}
-
-fn normalize_name(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect()
 }
 
 async fn fetch_src_run(run_id: &'_ str) -> Result<speedrun_api::types::Run<'_>> {
@@ -127,24 +95,4 @@ async fn fetch_src_run(run_id: &'_ str) -> Result<speedrun_api::types::Run<'_>> 
     let query = api::runs::Run::builder().id(run_id).build()?;
     let result = query.query_async(&client).await?;
     Ok(result)
-}
-
-async fn fetch_game_and_category(
-    run: &speedrun_api::types::Run<'_>,
-) -> Result<(types::Game<'static>, types::Category<'static>)> {
-    let client = SpeedrunApiClientAsync::new().unwrap();
-
-    // Fetch game details
-    let game_id = run.game.to_string();
-    let game_query = api::games::Game::builder().id(&game_id).build()?;
-    let game = game_query.query_async(&client).await?;
-
-    // Fetch category details
-    let category_id = run.category.to_string();
-    let category_query = api::categories::Category::builder()
-        .id(&category_id)
-        .build()?;
-    let category = category_query.query_async(&client).await?;
-
-    Ok((game, category))
 }

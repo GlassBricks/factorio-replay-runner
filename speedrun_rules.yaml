@@ -1,13 +1,24 @@
-Factorio Space Age:
-  expected_mods:
-    - base
-    - quality
-    - elevated-rails
-    - space-age
-  categories:
-    Random Seed New Game+:
-      blueprint_import: true
-Factorio:
-  expected_mods:
-    - base
-  categories: {}
+# Game and category IDs can be found in speedrun.com API:
+# - Game ID: https://www.speedrun.com/api/v1/games?name=Game+Name
+# - Categories: https://www.speedrun.com/api/v1/games/{game_id}/categories
+#
+# Format: games.<game_id>.categories.<category_id>
+
+games:
+  ldewr7ed:  # Factorio: Space Age
+    name: "Factorio: Space Age"
+    expected_mods:
+      - base
+      - quality
+      - elevated-rails
+      - space-age
+    categories:
+      jdzmlwrk:  # Random Seed New Game+
+        name: "Random Seed New Game+"
+        blueprint_import: true
+
+  9d35xw1l:  # Factorio
+    name: "Factorio"
+    expected_mods:
+      - base
+    categories: {}

@@ -12,32 +12,24 @@ pub struct DaemonConfig {
     pub cutoff_date: String,
 }
 
-impl Default for DaemonConfig {
-    fn default() -> Self {
-        Self {
-            poll_interval_seconds: 300,
-            database_path: PathBuf::from("./run_verification.db"),
-            speedrun_rules_path: PathBuf::from("speedrun_rules.yaml"),
-            cutoff_date: "2025-01-01".to_string(),
-        }
-    }
-}
-
 #[derive(Deserialize, Serialize)]
 pub struct SrcRunRules {
-    #[serde(flatten)]
-    pub games: HashMap<String, GameRules>,
+    pub games: HashMap<String, GameConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct GameRules {
+pub struct GameConfig {
+    #[serde(default)]
+    pub name: Option<String>,
     pub expected_mods: ExpectedMods,
-    pub categories: HashMap<String, CategoryRules>,
+    pub categories: HashMap<String, CategoryConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct CategoryRules {
+pub struct CategoryConfig {
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(flatten)]
     pub run_rules: RunRules,
 }

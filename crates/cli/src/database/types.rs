@@ -22,8 +22,8 @@ pub enum VerificationStatus {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Run {
     pub run_id: String,
-    pub game_name: String,
-    pub category_name: String,
+    pub game_id: String,
+    pub category_id: String,
     pub runner_name: Option<String>,
     pub submitted_date: String,
     pub status: String,
@@ -50,8 +50,8 @@ impl Run {
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PollState {
-    pub game_name: String,
-    pub category_name: String,
+    pub game_id: String,
+    pub category_id: String,
     pub last_poll_time: String,
     pub last_poll_success: String,
 }
@@ -59,8 +59,8 @@ pub struct PollState {
 #[derive(Debug, Clone)]
 pub struct NewRun {
     pub run_id: String,
-    pub game_name: String,
-    pub category_name: String,
+    pub game_id: String,
+    pub category_id: String,
     pub runner_name: Option<String>,
     pub submitted_date: String,
 }
@@ -68,14 +68,14 @@ pub struct NewRun {
 impl NewRun {
     pub fn new(
         run_id: impl Into<String>,
-        game_name: impl Into<String>,
-        category_name: impl Into<String>,
+        game_id: impl Into<String>,
+        category_id: impl Into<String>,
         submitted_date: impl Into<String>,
     ) -> Self {
         Self {
             run_id: run_id.into(),
-            game_name: game_name.into(),
-            category_name: category_name.into(),
+            game_id: game_id.into(),
+            category_id: category_id.into(),
             runner_name: None,
             submitted_date: submitted_date.into(),
         }
