@@ -1,9 +1,12 @@
 /target
 .direnv
+.envrc
 .idea
 .env
 /test_tmp/
 /factorio_installs/
 /src_runs/
+/worktrees/
 .claude
 **/.sqlx
+run_verification.db
