@@ -5,7 +5,7 @@ use factorio_manager::{
     process_manager::setup_signal_handlers,
     save_file::{SaveFile, WrittenSaveFile},
 };
-use rules::{RunRules, SrcRunRules};
+use config::{RunRules, SrcRunRules};
 use run_replay::{ReplayReport, run_replay};
 use src_integration::run_replay_from_src_run;
 use std::{
@@ -17,8 +17,8 @@ use zip_downloader::{
     services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
 };
 
+mod config;
 mod database;
-mod rules;
 mod run_replay;
 mod src_integration;
 

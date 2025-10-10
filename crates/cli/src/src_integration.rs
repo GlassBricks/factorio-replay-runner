@@ -13,7 +13,7 @@ use zip_downloader::FileDownloader;
 
 use factorio_manager::factorio_install_dir::FactorioInstallDir;
 
-use crate::rules::{RunRules, SrcRunRules};
+use crate::config::{RunRules, SrcRunRules};
 use crate::run_replay::{ReplayReport, run_replay};
 
 pub async fn run_replay_from_src_run(

@@ -15,7 +15,7 @@ use futures::{AsyncBufReadExt, Stream, StreamExt};
 use log::{debug, info};
 use replay_script::{MsgLevel, ReplayMsg};
 
-use crate::rules::RunRules;
+use crate::config::RunRules;
 
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
