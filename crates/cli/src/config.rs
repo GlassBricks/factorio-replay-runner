@@ -8,7 +8,6 @@ use std::{collections::HashMap, path::PathBuf};
 pub struct DaemonConfig {
     pub poll_interval_seconds: u64,
     pub database_path: PathBuf,
-    pub speedrun_rules_path: PathBuf,
     pub cutoff_date: String,
 }
 

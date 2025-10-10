@@ -22,8 +22,8 @@ A daemon that automatically discovers, downloads, and validates Factorio speedru
 | Column                | Type             | Description                             |
 | --------------------- | ---------------- | --------------------------------------- |
 | `run_id`              | TEXT PRIMARY KEY | speedrun.com run ID                     |
-| `game_name`           | TEXT NOT NULL    | normalized game name                    |
-| `category_name`       | TEXT NOT NULL    | normalized category name                |
+| `game_id`             | TEXT NOT NULL    | speedrun.com game ID                    |
+| `category_id`         | TEXT NOT NULL    | speedrun.com category ID                |
 | `runner_name`         | TEXT             | speedrunner username                    |
 | `submitted_date`      | TEXT NOT NULL    | when run was submitted                  |
 | `status`              | TEXT NOT NULL    | processing status                       |
@@ -36,7 +36,7 @@ A daemon that automatically discovers, downloads, and validates Factorio speedru
 
 ```sql
 CREATE INDEX idx_runs_status ON runs(status);
-CREATE INDEX idx_runs_game_category ON runs(game_name, category_name);
+CREATE INDEX idx_runs_game_category ON runs(game_id, category_id);
 ```
 
 #### Table: `poll_state`
@@ -45,11 +45,11 @@ CREATE INDEX idx_runs_game_category ON runs(game_name, category_name);
 
 | Column              | Type          | Description                    |
 | ------------------- | ------------- | ------------------------------ |
-| `game_name`         | TEXT NOT NULL | normalized game name           |
-| `category_name`     | TEXT NOT NULL | normalized category name       |
+| `game_id`           | TEXT NOT NULL | speedrun.com game ID           |
+| `category_id`       | TEXT NOT NULL | speedrun.com category ID       |
 | `last_poll_time`    | TEXT NOT NULL | last poll attempt timestamp    |
 | `last_poll_success` | TEXT NOT NULL | last successful poll timestamp |
-| PRIMARY KEY         |               | (game_name, category_name)     |
+| PRIMARY KEY         |               | (game_id, category_id)         |
 
 ## Status Model
 
@@ -72,7 +72,7 @@ discovered → processing → passed/failed/error
 
 ### Startup
 
-1. Load configuration from `speedrun_rules.yaml` and `daemon-config.yaml`
+1. Load configuration from `daemon-config.yaml` and `speedrun_rules.yaml` (CLI arg with default)
 2. Initialize database (create tables if needed)
 3. Verify Factorio install directory exists
 
@@ -108,7 +108,6 @@ discovered → processing → passed/failed/error
 ```yaml
 poll_interval_seconds: 300 # 5 minutes
 database_path: ./run_verification.db
-speedrun_rules_path: speedrun_rules.yaml
 cutoff_date: "2025-01-01"
 ```
 
@@ -122,7 +121,8 @@ cli daemon [OPTIONS]
 
 **Options:**
 
-- `--config <PATH>` - Config file
+- `--config <PATH>` - Config file (default: daemon-config.yaml)
+- `--rules <PATH>` - Speedrun rules file (default: speedrun_rules.yaml)
 - `--install-dir <PATH>` - Factorio installs dir
 - `--output-dir <PATH>` - Log output dir
 
