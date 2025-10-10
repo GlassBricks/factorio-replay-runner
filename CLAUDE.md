@@ -5,27 +5,7 @@
 This is a Rust workspace for running and analyzing Factorio game replays.
 It downloads replay files, injects custom Lua scripts (compiled from TypeScript), runs them in Factorio, and validates results against rules.
 
-## Build Commands
-
-```bash
-# Build all crates
-cargo build
-# Run tests for all crates
-cargo test
-
-# Run tests for specific crate
-cargo test -p cli
-cargo test -p factorio_manager
-cargo test -p replay_script
-
-# Format code (uses custom rustfmt.toml)
-cargo fmt
-
-# Run the CLI binary
-cargo run --bin cli -- <args>
-```
-
-## Crate Architecture
+## Crates
 
 ### `replay_script`
 Contains TypeScript → Lua compilation system:
@@ -63,19 +43,21 @@ Main entry point that orchestrates everything:
 - `run_replay.rs`: core replay execution logic
 - `rules.rs`: `RunRules`, `SrcRunRules`, `GameRules` - defines validation rules
 - `src_integration.rs`: speedrun.com integration
+- `database/`: SQLite database infrastructure for run tracking
+  - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
+  - `connection.rs`: `Database` wrapper around sqlx pool with migrations
+  - `operations.rs`: database CRUD operations for runs and poll state
+  - `migrations/`: SQL migration files for schema versioning
 - Two main commands:
   - `run`: Run replay on local save file with rules
   - `run-src`: Run replay fetched from speedrun.com
 
-## Development Workflow
+## Working with TypeScript/Lua Scripts
 
-### Working with TypeScript/Lua Scripts
-
-When modifying replay scripts in `crates/replay_script/tstl_src/rules/`:
-1. Edit TypeScript files
-2. Rebuild with `cargo build -p replay_script` (triggers `build.rs`)
-3. Generated Lua appears in `target/debug/build/replay_script-*/out/rules/`
-4. Generated Rust code in `target/debug/build/replay_script-*/out/replay_scripts.rs`
+After modifying replay scripts in `crates/replay_script/tstl_src/rules/`,
+`build.rs` will
+- Generate Lua in `target/debug/build/replay_script-*/out/rules/`
+- Generate Rust in `target/debug/build/replay_script-*/out/replay_scripts.rs`
 
 ## Code Style
 
@@ -86,8 +68,17 @@ When modifying replay scripts in `crates/replay_script/tstl_src/rules/`:
 - **No code comments**: Self-documenting code preferred
 - **Workspace dependencies**: All dependencies should be workspace dependencies
 
+- After initial code implementation, after everything works, re-visit the code again and maximize code quality:
+  - Avoid deep nesting
+  - Break up large functions; keep them single responsibility
+  - Identify common patterns and code duplication, into reusable functions
+  - Remove unnecessary or dead code; always err on simplicity
+
+## Architecture and code organization
+
+- Keep it simple, YAGNI, only add the minimum needed to support current goal
+
 ## Configuration Files
 
 - **`.env`**: Environment variables (OAuth tokens, API keys) - required for download services
 - **`speedrun_rules.yaml`**: Game/category rules for speedrun.com integration
-- **Run rules files**: YAML/JSON files defining `RunRules` structure (scripts to enable, mods expected)

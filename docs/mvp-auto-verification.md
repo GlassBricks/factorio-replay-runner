@@ -107,7 +107,6 @@ discovered → processing → passed/failed/error
 
 ```yaml
 poll_interval_seconds: 300 # 5 minutes
-process_interval_seconds: 30
 database_path: ./run_verification.db
 speedrun_rules_path: speedrun_rules.yaml
 cutoff_date: "2025-01-01"
@@ -144,9 +143,9 @@ cli reset-run <run_id> [OPTIONS]
 
 ### 1. Database Infrastructure
 
-**New crate:** `crates/daemon`
+**In:** `crates/cli`
 
-Subfolder: `database`
+Subfolder: `src/database`
 
 - RunStatus enum
 - Run, PollState structs

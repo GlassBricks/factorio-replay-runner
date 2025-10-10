@@ -17,6 +17,7 @@ use zip_downloader::{
     services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
 };
 
+mod database;
 mod rules;
 mod run_replay;
 mod src_integration;

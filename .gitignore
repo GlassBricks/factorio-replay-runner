@@ -5,3 +5,5 @@
 /test_tmp/
 /factorio_installs/
 /src_runs/
+.claude
+**/.sqlx
