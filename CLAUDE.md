@@ -41,7 +41,7 @@ Downloads and validates zip files from various sources:
 Main entry point that orchestrates everything:
 - `main.rs`: CLI argument parsing with clap
 - `run_replay.rs`: core replay execution logic
-- `rules.rs`: `RunRules`, `SrcRunRules`, `GameRules` - defines validation rules
+- `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig` - defines validation rules and configuration
 - `src_integration.rs`: speedrun.com integration
 - `database/`: SQLite database infrastructure for run tracking
   - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
