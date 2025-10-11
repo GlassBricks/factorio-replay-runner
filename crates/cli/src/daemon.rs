@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
+use factorio_manager::shutdown::ShutdownCoordinator;
 use log::info;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Notify, watch};
+use tokio::sync::Notify;
 
 use crate::config::{DaemonConfig, GameConfig};
 use crate::database::connection::Database;
@@ -19,6 +20,7 @@ pub async fn run_daemon(
     game_configs: HashMap<String, GameConfig>,
     install_dir: PathBuf,
     output_dir: PathBuf,
+    coordinator: ShutdownCoordinator,
 ) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
     info!("Monitoring {} game(s)", game_configs.len());
@@ -29,8 +31,6 @@ pub async fn run_daemon(
 
     std::fs::create_dir_all(&install_dir)?;
     std::fs::create_dir_all(&output_dir)?;
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    setup_shutdown_handler(shutdown_tx)?;
 
     let work_notify = Arc::new(Notify::new());
 
@@ -41,7 +41,7 @@ pub async fn run_daemon(
         config.clone(),
         game_configs.clone(),
         work_notify.clone(),
-        shutdown_rx.clone(),
+        coordinator.subscribe(),
     );
 
     let processor_task = process_runs_loop(
@@ -50,7 +50,7 @@ pub async fn run_daemon(
         install_dir,
         output_dir,
         work_notify,
-        shutdown_rx,
+        coordinator.subscribe(),
     );
 
     let (poller_result, processor_result) = tokio::join!(poller_task, processor_task);
@@ -58,28 +58,5 @@ pub async fn run_daemon(
     poller_result.or(processor_result)?;
 
     info!("Daemon shutting down");
-    Ok(())
-}
-
-fn setup_shutdown_handler(shutdown_tx: watch::Sender<bool>) -> Result<()> {
-    use tokio::signal;
-
-    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-        .context("Failed to register SIGINT handler")?;
-    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-        .context("Failed to register SIGTERM handler")?;
-
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = sigint.recv() => {
-                info!("Received SIGINT");
-            }
-            _ = sigterm.recv() => {
-                info!("Received SIGTERM");
-            }
-        }
-        let _ = shutdown_tx.send(true);
-    });
-
     Ok(())
 }

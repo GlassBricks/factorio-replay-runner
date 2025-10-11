@@ -5,3 +5,4 @@ pub mod factorio_instance;
 pub mod mod_versions;
 pub mod process_manager;
 pub mod save_file;
+pub mod shutdown;

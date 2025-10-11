@@ -1,3 +1,4 @@
+use anyhow::Result;
 use factorio_manager::expected_mods::ExpectedMods;
 use replay_script::ReplayScripts;
 use serde::{Deserialize, Serialize};
@@ -40,4 +41,28 @@ pub struct RunRules {
     pub expected_mods_override: Option<ExpectedMods>,
     #[serde(flatten)]
     pub replay_scripts: ReplayScripts,
+}
+
+impl SrcRunRules {
+    pub fn resolve_rules(
+        &self,
+        game_id: &str,
+        category_id: &str,
+    ) -> Result<(&RunRules, &ExpectedMods)> {
+        let game_config = self.games.get(game_id).ok_or_else(|| {
+            anyhow::anyhow!("No configuration found for game={}", game_id)
+        })?;
+
+        let category_config = game_config.categories.get(category_id).ok_or_else(|| {
+            anyhow::anyhow!("No configuration found for category={}", category_id)
+        })?;
+
+        let run_rules = &category_config.run_rules;
+        let expected_mods = run_rules
+            .expected_mods_override
+            .as_ref()
+            .unwrap_or(&game_config.expected_mods);
+
+        Ok((run_rules, expected_mods))
+    }
 }

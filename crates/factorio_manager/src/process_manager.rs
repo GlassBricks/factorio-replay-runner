@@ -6,12 +6,13 @@ use std::{
 
 pub type ProcessId = u32;
 
+#[derive(Clone)]
 pub struct ProcessManager {
     processes: Arc<Mutex<HashSet<ProcessId>>>,
 }
 
 impl ProcessManager {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             processes: Arc::new(Mutex::new(HashSet::new())),
         }
@@ -43,29 +44,6 @@ impl ProcessManager {
 
 lazy_static! {
     pub static ref GLOBAL_PROCESS_MANAGER: ProcessManager = ProcessManager::new();
-}
-
-pub async fn setup_signal_handlers() -> anyhow::Result<()> {
-    use tokio::signal;
-
-    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())?;
-    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())?;
-
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = sigint.recv() => {
-                eprintln!("\nReceived SIGINT, cleaning up processes...");
-                GLOBAL_PROCESS_MANAGER.kill_all();
-            }
-            _ = sigterm.recv() => {
-                eprintln!("\nReceived SIGTERM, cleaning up processes...");
-                GLOBAL_PROCESS_MANAGER.kill_all();
-            }
-        }
-        std::process::exit(130); // Standard exit code for SIGINT
-    });
-
-    Ok(())
 }
 
 #[cfg(test)]

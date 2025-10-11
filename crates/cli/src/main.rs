@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use factorio_manager::{
     factorio_install_dir::FactorioInstallDir,
-    process_manager::setup_signal_handlers,
+    process_manager::GLOBAL_PROCESS_MANAGER,
     save_file::{SaveFile, WrittenSaveFile},
+    shutdown::ShutdownCoordinator,
 };
 use config::{DaemonConfig, RunRules, SrcRunRules};
 use run_replay::{ReplayReport, run_replay};
@@ -11,16 +12,14 @@ use src_integration::run_replay_from_src_run;
 use std::{
     fs::File,
     path::{Path, PathBuf},
-};
-use zip_downloader::{
-    FileDownloader,
-    services::{dropbox::DropboxService, gdrive::GoogleDriveService, speedrun::SpeedrunService},
+    sync::Arc,
 };
 
 mod config;
 mod daemon;
 mod database;
 mod run_lookup;
+mod run_processing;
 mod run_replay;
 mod src_integration;
 
@@ -111,19 +110,20 @@ async fn main() -> Result<()> {
 
     let args = CliArgs::parse();
 
+    let coordinator = ShutdownCoordinator::new(Arc::new((*GLOBAL_PROCESS_MANAGER).clone()));
+    coordinator.setup_handlers()?;
+
     match args.command {
         Commands::Run(sub_args) => {
-            setup_signal_handlers().await?;
             let exit_code = cli_run_file(sub_args).await?;
             std::process::exit(exit_code);
         }
         Commands::RunSrc(sub_args) => {
-            setup_signal_handlers().await?;
             let exit_code = cli_run_src(sub_args).await?;
             std::process::exit(exit_code);
         }
         Commands::Daemon(sub_args) => {
-            cli_daemon(sub_args).await?;
+            cli_daemon(sub_args, coordinator).await?;
             Ok(())
         }
     }
@@ -191,11 +191,10 @@ async fn run_src(
 ) -> Result<ReplayReport> {
     let install_dir = load_install_dir(install_dir).await?;
     let rules = load_src_rules(game_rules_file).await?;
-    let mut downloader = create_file_downloader().await?;
-    run_replay_from_src_run(&mut downloader, run_id, &install_dir, &rules, output_dir).await
+    run_replay_from_src_run(run_id, &install_dir, &rules, output_dir).await
 }
 
-async fn cli_daemon(args: DaemonArgs) -> Result<i32> {
+async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {
     let DaemonArgs {
         game_rules_file,
         install_dir,
@@ -212,22 +211,9 @@ async fn cli_daemon(args: DaemonArgs) -> Result<i32> {
         cutoff_date,
     };
 
-    daemon::run_daemon(daemon_config, src_rules.games, install_dir, output_dir).await?;
+    daemon::run_daemon(daemon_config, src_rules.games, install_dir, output_dir, coordinator)
+        .await?;
     Ok(0)
-}
-
-async fn create_file_downloader() -> Result<FileDownloader> {
-    if std::env::var("AUTO_DOWNLOAD_RUNS").is_err() {
-        panic!(
-            "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
-        );
-    }
-
-    Ok(FileDownloader::builder()
-        .add_service(GoogleDriveService::new())
-        .add_service(DropboxService::new())
-        .add_service(SpeedrunService::new())
-        .build())
 }
 
 async fn load_install_dir(install_dir_path: &Path) -> Result<FactorioInstallDir> {

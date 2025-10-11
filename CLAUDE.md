@@ -99,3 +99,5 @@ After modifying replay scripts in `crates/replay_script/tstl_src/rules/`,
   - `chore`: Maintenance tasks
 - **Body**: Explain why, not what (optional)
 - **One logical change per commit**: Keep commits focused and atomic
+
+Omit "co-authored-by claude code" attribution in commit messages.
