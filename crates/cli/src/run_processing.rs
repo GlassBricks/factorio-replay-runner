@@ -11,7 +11,6 @@ use speedrun_api::SpeedrunApiClientAsync;
 use speedrun_api::api;
 use speedrun_api::api::AsyncQuery;
 use speedrun_api::api::PagedEndpointExt as _;
-use speedrun_api::api::runs::RunStatus;
 use std::fs::File;
 use std::path::Path;
 use zip_downloader::FileDownloader;
@@ -107,8 +106,7 @@ pub async fn fetch_run_metadata(run_id: &str) -> Result<(String, String)> {
 pub async fn poll_game_category(
     game_id: &str,
     category_id: &str,
-    last_poll_time: &str,
-    cutoff_date: &str,
+    cutoff_date: &DateTime<Utc>,
 ) -> Result<Vec<NewRun>> {
     info!(
         "Polling for new runs: game={}, category={}",
@@ -117,13 +115,9 @@ pub async fn poll_game_category(
 
     let client = SpeedrunApiClientAsync::new()?;
 
-    let last_poll_dt = parse_datetime(last_poll_time)?;
-    let cutoff_dt = parse_datetime(cutoff_date)?;
-
     let endpoint = api::runs::Runs::builder()
         .game(game_id)
         .category(category_id)
-        .status(RunStatus::Verified)
         .orderby(api::runs::RunsSorting::Submitted)
         .direction(api::Direction::Asc)
         .build()?;
@@ -133,22 +127,14 @@ pub async fn poll_game_category(
 
     while let Some(result) = stream.next().await {
         let run: speedrun_api::types::Run = result?;
+        if let Some(submitted_dt) = run.submitted
+            && let Ok(submitted_date) = parse_datetime(&submitted_dt)
+            && (submitted_date >= *cutoff_date)
+        {
+            let new_run = NewRun::new(run.id.to_string(), game_id, category_id, submitted_date);
 
-        let submitted_dt = run.submitted.as_ref().and_then(|s| parse_datetime(s).ok());
-
-        let should_include = submitted_dt
-            .map(|dt| dt > last_poll_dt && dt >= cutoff_dt)
-            .unwrap_or(false);
-
-        if !should_include {
-            continue;
-        }
-
-        let submitted_date = submitted_dt.unwrap_or_else(Utc::now);
-
-        let new_run = NewRun::new(run.id.to_string(), game_id, category_id, submitted_date);
-
-        new_runs.push(new_run);
+            new_runs.push(new_run);
+        };
     }
 
     debug!("Found {} new runs", new_runs.len());

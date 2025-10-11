@@ -12,12 +12,4 @@ CREATE TABLE runs (
 
 CREATE INDEX idx_runs_status ON runs(status);
 CREATE INDEX idx_runs_game_category ON runs(game_id, category_id);
-
--- poll_state table
-CREATE TABLE poll_state (
-    game_id TEXT NOT NULL,
-    category_id TEXT NOT NULL,
-    last_poll_time TEXT NOT NULL,
-    last_poll_success TEXT NOT NULL,
-    PRIMARY KEY (game_id, category_id)
-);
+CREATE INDEX idx_runs_submitted_date ON runs(game_id, category_id, submitted_date DESC);

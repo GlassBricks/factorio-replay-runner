@@ -7,10 +7,6 @@ use tokio::sync::{Notify, watch};
 
 use crate::config::{GameConfig, SrcRunRules};
 use crate::database::connection::Database;
-use crate::database::operations::{
-    get_next_discovered_run, mark_run_error, mark_run_failed, mark_run_needs_review,
-    mark_run_passed, mark_run_processing,
-};
 use crate::database::types::Run;
 use crate::run_processing::download_and_run_replay;
 use replay_script::MsgLevel;
@@ -65,7 +61,7 @@ async fn find_run_to_process(
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ProcessResult> {
-    let run = match get_next_discovered_run(db).await? {
+    let run = match db.get_next_discovered_run().await? {
         Some(run) => run,
         None => return Ok(ProcessResult::NoWork),
     };
@@ -92,7 +88,7 @@ async fn process_run(
 ) -> Result<()> {
     let run_id = run.run_id.clone();
 
-    mark_run_processing(db, &run_id)
+    db.mark_run_processing(&run_id)
         .await
         .context("Failed to mark run as processing")?;
 
@@ -110,26 +106,26 @@ async fn process_run(
     match result {
         Ok(report) if report.exited_successfully => match report.max_msg_level {
             MsgLevel::Info => {
-                mark_run_passed(db, &run_id).await?;
+                db.mark_run_passed(&run_id).await?;
                 info!("Run {} passed verification", run_id);
             }
             MsgLevel::Warn => {
-                mark_run_needs_review(db, &run_id).await?;
+                db.mark_run_needs_review(&run_id).await?;
                 warn!("Run {} passed with warnings (needs review)", run_id);
             }
             MsgLevel::Error => {
-                mark_run_failed(db, &run_id).await?;
+                db.mark_run_failed(&run_id).await?;
                 warn!("Run {} failed verification", run_id);
             }
         },
         Ok(_) => {
             let error_msg = "Replay did not exit successfully";
-            mark_run_error(db, &run_id, error_msg).await?;
+            db.mark_run_error(&run_id, error_msg).await?;
             error!("Run {} error: {}", run_id, error_msg);
         }
         Err(e) => {
             let error_msg = format!("Failed to process run: {:#}", e);
-            mark_run_error(db, &run_id, &error_msg).await?;
+            db.mark_run_error(&run_id, &error_msg).await?;
             error!("Run {} error: {}", run_id, error_msg);
         }
     }
@@ -140,7 +136,6 @@ async fn process_run(
 mod tests {
     use super::*;
     use crate::database::connection::Database;
-    use crate::database::operations::insert_run;
     use crate::database::types::NewRun;
 
     #[tokio::test]
@@ -169,7 +164,7 @@ mod tests {
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
         );
-        insert_run(&db, new_run).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let result = find_run_to_process(&db, &game_configs, &install_dir, &output_dir).await;
 

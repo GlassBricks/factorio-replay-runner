@@ -50,13 +50,12 @@ mod tests {
     async fn test_migrations_create_tables() {
         let db = Database::in_memory().await.unwrap();
 
-        let result: (i32,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('runs', 'poll_state')"
-        )
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+        let result: (i32,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='runs'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
 
-        assert_eq!(result.0, 2);
+        assert_eq!(result.0, 1);
     }
 }

@@ -25,15 +25,6 @@ pub struct Run {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct PollState {
-    pub game_id: String,
-    pub category_id: String,
-    pub last_poll_time: DateTime<Utc>,
-    pub last_poll_success: DateTime<Utc>,
-}
-
 #[derive(Debug, Clone)]
 pub struct NewRun {
     pub run_id: String,

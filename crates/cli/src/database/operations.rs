@@ -1,173 +1,150 @@
 use super::connection::Database;
-use super::types::{NewRun, PollState, Run, RunStatus};
+use super::types::{NewRun, Run, RunStatus};
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
-pub async fn insert_run(db: &Database, new_run: NewRun) -> Result<()> {
-    let now = Utc::now();
-    let status = RunStatus::Discovered;
+impl Database {
+    pub async fn insert_run(&self, new_run: NewRun) -> Result<()> {
+        let now = Utc::now();
+        let status = RunStatus::Discovered;
 
-    sqlx::query!(
-        r#"
-        INSERT INTO runs (
-            run_id, game_id, category_id, submitted_date,
-            status, error_message, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
-        "#,
-        new_run.run_id,
-        new_run.game_id,
-        new_run.category_id,
-        new_run.submitted_date,
-        status,
-        now,
-        now
-    )
-    .execute(db.pool())
-    .await?;
+        sqlx::query!(
+            r#"
+            INSERT INTO runs (
+                run_id, game_id, category_id, submitted_date,
+                status, error_message, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+            "#,
+            new_run.run_id,
+            new_run.game_id,
+            new_run.category_id,
+            new_run.submitted_date,
+            status,
+            now,
+            now
+        )
+        .execute(self.pool())
+        .await?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-async fn update_run_status(
-    db: &Database,
-    run_id: &str,
-    status: RunStatus,
-    error_message: Option<&str>,
-) -> Result<()> {
-    let now = Utc::now();
+    async fn update_run_status(
+        &self,
+        run_id: &str,
+        status: RunStatus,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let now = Utc::now();
 
-    sqlx::query!(
-        r#"
-        UPDATE runs
-        SET status = ?, error_message = ?, updated_at = ?
-        WHERE run_id = ?
-        "#,
-        status,
-        error_message,
-        now,
-        run_id
-    )
-    .execute(db.pool())
-    .await?;
+        sqlx::query!(
+            r#"
+            UPDATE runs
+            SET status = ?, error_message = ?, updated_at = ?
+            WHERE run_id = ?
+            "#,
+            status,
+            error_message,
+            now,
+            run_id
+        )
+        .execute(self.pool())
+        .await?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub async fn mark_run_processing(db: &Database, run_id: &str) -> Result<()> {
-    update_run_status(db, run_id, RunStatus::Processing, None).await
-}
+    pub async fn mark_run_processing(&self, run_id: &str) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::Processing, None)
+            .await
+    }
 
-pub async fn mark_run_passed(db: &Database, run_id: &str) -> Result<()> {
-    update_run_status(db, run_id, RunStatus::Passed, None).await
-}
+    pub async fn mark_run_passed(&self, run_id: &str) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::Passed, None)
+            .await
+    }
 
-pub async fn mark_run_needs_review(db: &Database, run_id: &str) -> Result<()> {
-    update_run_status(db, run_id, RunStatus::NeedsReview, None).await
-}
+    pub async fn mark_run_needs_review(&self, run_id: &str) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::NeedsReview, None)
+            .await
+    }
 
-pub async fn mark_run_failed(db: &Database, run_id: &str) -> Result<()> {
-    update_run_status(db, run_id, RunStatus::Failed, None).await
-}
+    pub async fn mark_run_failed(&self, run_id: &str) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::Failed, None)
+            .await
+    }
 
-pub async fn mark_run_error(db: &Database, run_id: &str, error_message: &str) -> Result<()> {
-    update_run_status(db, run_id, RunStatus::Error, Some(error_message)).await
-}
+    pub async fn mark_run_error(&self, run_id: &str, error_message: &str) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::Error, Some(error_message))
+            .await
+    }
 
-#[allow(dead_code)]
-pub async fn get_run(db: &Database, run_id: &str) -> Result<Option<Run>> {
-    let run = sqlx::query_as!(
-        Run,
-        r#"
-        SELECT run_id, game_id, category_id,
-               submitted_date as "submitted_date: chrono::DateTime<Utc>",
-               status as "status: RunStatus",
-               error_message,
-               created_at as "created_at: chrono::DateTime<Utc>",
-               updated_at as "updated_at: chrono::DateTime<Utc>"
-        FROM runs
-        WHERE run_id = ?
-        "#,
-        run_id
-    )
-    .fetch_optional(db.pool())
-    .await?;
+    #[allow(dead_code)]
+    pub async fn get_run(&self, run_id: &str) -> Result<Option<Run>> {
+        let run = sqlx::query_as!(
+            Run,
+            r#"
+            SELECT run_id, game_id, category_id,
+                   submitted_date as "submitted_date: chrono::DateTime<Utc>",
+                   status as "status: RunStatus",
+                   error_message,
+                   created_at as "created_at: chrono::DateTime<Utc>",
+                   updated_at as "updated_at: chrono::DateTime<Utc>"
+            FROM runs
+            WHERE run_id = ?
+            "#,
+            run_id
+        )
+        .fetch_optional(self.pool())
+        .await?;
 
-    Ok(run)
-}
+        Ok(run)
+    }
 
-pub async fn get_next_discovered_run(db: &Database) -> Result<Option<Run>> {
-    let status = RunStatus::Discovered;
+    pub async fn get_next_discovered_run(&self) -> Result<Option<Run>> {
+        let status = RunStatus::Discovered;
 
-    let run = sqlx::query_as!(
-        Run,
-        r#"
-        SELECT run_id, game_id, category_id,
-               submitted_date as "submitted_date: chrono::DateTime<Utc>",
-               status as "status: RunStatus",
-               error_message,
-               created_at as "created_at: chrono::DateTime<Utc>",
-               updated_at as "updated_at: chrono::DateTime<Utc>"
-        FROM runs
-        WHERE status = ?
-        ORDER BY submitted_date ASC
-        LIMIT 1
-        "#,
-        status
-    )
-    .fetch_optional(db.pool())
-    .await?;
+        let run = sqlx::query_as!(
+            Run,
+            r#"
+            SELECT run_id, game_id, category_id,
+                   submitted_date as "submitted_date: chrono::DateTime<Utc>",
+                   status as "status: RunStatus",
+                   error_message,
+                   created_at as "created_at: chrono::DateTime<Utc>",
+                   updated_at as "updated_at: chrono::DateTime<Utc>"
+            FROM runs
+            WHERE status = ?
+            ORDER BY submitted_date ASC
+            LIMIT 1
+            "#,
+            status
+        )
+        .fetch_optional(self.pool())
+        .await?;
 
-    Ok(run)
-}
+        Ok(run)
+    }
 
-pub async fn upsert_poll_state(
-    db: &Database,
-    game_id: &str,
-    category_id: &str,
-    last_poll_time: chrono::DateTime<Utc>,
-    last_poll_success: chrono::DateTime<Utc>,
-) -> Result<()> {
-    sqlx::query!(
-        r#"
-        INSERT INTO poll_state (game_id, category_id, last_poll_time, last_poll_success)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT (game_id, category_id)
-        DO UPDATE SET last_poll_time = ?, last_poll_success = ?
-        "#,
-        game_id,
-        category_id,
-        last_poll_time,
-        last_poll_success,
-        last_poll_time,
-        last_poll_success
-    )
-    .execute(db.pool())
-    .await?;
+    pub async fn get_latest_submitted_date(
+        &self,
+        game_id: &str,
+        category_id: &str,
+    ) -> Result<Option<DateTime<Utc>>> {
+        let result = sqlx::query!(
+            r#"
+            SELECT MAX(submitted_date) as "latest: chrono::DateTime<Utc>"
+            FROM runs
+            WHERE game_id = ? AND category_id = ?
+            "#,
+            game_id,
+            category_id
+        )
+        .fetch_one(self.pool())
+        .await?;
 
-    Ok(())
-}
-
-pub async fn get_poll_state(
-    db: &Database,
-    game_id: &str,
-    category_id: &str,
-) -> Result<Option<PollState>> {
-    let state = sqlx::query_as!(
-        PollState,
-        r#"
-        SELECT game_id, category_id,
-               last_poll_time as "last_poll_time: chrono::DateTime<Utc>",
-               last_poll_success as "last_poll_success: chrono::DateTime<Utc>"
-        FROM poll_state
-        WHERE game_id = ? AND category_id = ?
-        "#,
-        game_id,
-        category_id
-    )
-    .fetch_optional(db.pool())
-    .await?;
-
-    Ok(state)
+        Ok(result.latest)
+    }
 }
 
 #[cfg(test)]
@@ -181,9 +158,9 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
 
-        insert_run(&db, new_run).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
-        let run = get_run(&db, "run123").await.unwrap().unwrap();
+        let run = db.get_run("run123").await.unwrap().unwrap();
         assert_eq!(run.run_id, "run123");
         assert_eq!(run.game_id, "game_id_1");
         assert_eq!(run.category_id, "cat_id_1");
@@ -196,14 +173,14 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
-        insert_run(&db, new_run).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
-        mark_run_processing(&db, "run123").await.unwrap();
-        let run = get_run(&db, "run123").await.unwrap().unwrap();
+        db.mark_run_processing("run123").await.unwrap();
+        let run = db.get_run("run123").await.unwrap().unwrap();
         assert_eq!(run.status, RunStatus::Processing);
 
-        mark_run_passed(&db, "run123").await.unwrap();
-        let run = get_run(&db, "run123").await.unwrap().unwrap();
+        db.mark_run_passed("run123").await.unwrap();
+        let run = db.get_run("run123").await.unwrap().unwrap();
         assert_eq!(run.status, RunStatus::Passed);
     }
 
@@ -211,70 +188,82 @@ mod tests {
     async fn test_get_next_discovered_run() {
         let db = Database::in_memory().await.unwrap();
 
-        insert_run(
-            &db,
-            NewRun::new(
-                "run1",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        insert_run(
-            &db,
-            NewRun::new(
-                "run2",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        insert_run(
-            &db,
-            NewRun::new(
-                "run3",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
-        let next_run = get_next_discovered_run(&db).await.unwrap().unwrap();
+        let next_run = db.get_next_discovered_run().await.unwrap().unwrap();
         assert_eq!(next_run.run_id, "run2");
     }
 
     #[tokio::test]
-    async fn test_poll_state_operations() {
+    async fn test_get_latest_submitted_date() {
         let db = Database::in_memory().await.unwrap();
 
-        let time1: chrono::DateTime<Utc> = "2024-01-01T00:00:00Z".parse().unwrap();
-        let time2: chrono::DateTime<Utc> = "2024-01-02T00:00:00Z".parse().unwrap();
-
-        upsert_poll_state(&db, "game_id_1", "cat_id_1", time1, time1)
+        let latest = db
+            .get_latest_submitted_date("game_id_1", "cat_id_1")
             .await
             .unwrap();
+        assert_eq!(latest, None);
 
-        let state = get_poll_state(&db, "game_id_1", "cat_id_1")
+        db.insert_run(NewRun::new(
+            "run1",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let latest = db
+            .get_latest_submitted_date("game_id_1", "cat_id_1")
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(state.game_id, "game_id_1");
-        assert_eq!(state.category_id, "cat_id_1");
+        let expected: DateTime<Utc> = "2024-01-05T00:00:00Z".parse().unwrap();
+        assert_eq!(latest, expected);
 
-        upsert_poll_state(&db, "game_id_1", "cat_id_1", time2, time2)
+        let other_category = db
+            .get_latest_submitted_date("game_id_1", "other_cat")
             .await
             .unwrap();
-
-        let state = get_poll_state(&db, "game_id_1", "cat_id_1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(state.last_poll_time, time2);
+        assert_eq!(other_category, None);
     }
 }

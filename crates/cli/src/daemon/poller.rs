@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,8 +7,6 @@ use tokio::sync::{Notify, watch};
 
 use crate::config::{DaemonConfig, GameConfig};
 use crate::database::connection::Database;
-use crate::database::operations::{get_poll_state, insert_run, upsert_poll_state};
-use crate::database::types::PollState;
 use crate::run_processing::poll_game_category;
 
 pub async fn poll_speedrun_com_loop(
@@ -46,18 +44,10 @@ async fn poll_speedrun_com(
     game_configs: &HashMap<String, GameConfig>,
     work_notify: &Notify,
 ) -> Result<()> {
-    let now = Utc::now();
-    let poll_interval = Duration::seconds(config.poll_interval_seconds as i64);
     let cutoff_date = DateTime::parse_from_rfc3339(&config.cutoff_date)?.with_timezone(&Utc);
 
     for (game_id, game_config) in game_configs {
         for category_id in game_config.categories.keys() {
-            let poll_state = get_poll_state(db, game_id, category_id).await?;
-
-            if !should_poll(poll_state.as_ref(), poll_interval, now) {
-                continue;
-            }
-
             if let Err(e) = poll_category(db, game_id, category_id, cutoff_date, work_notify).await
             {
                 error!(
@@ -78,34 +68,22 @@ async fn poll_category(
     cutoff_date: DateTime<Utc>,
     work_notify: &Notify,
 ) -> Result<()> {
-    let poll_state = get_poll_state(db, game_id, category_id).await?;
-    let now = Utc::now();
-
-    let last_poll_time = poll_state
-        .as_ref()
-        .map(|state| state.last_poll_time)
+    let latest_submitted_date = db
+        .get_latest_submitted_date(game_id, category_id)
+        .await?
         .unwrap_or(cutoff_date);
 
-    let new_runs = poll_game_category(
-        game_id,
-        category_id,
-        &last_poll_time.to_rfc3339(),
-        &cutoff_date.to_rfc3339(),
-    )
-    .await
-    .context("Failed to poll game category from API")?;
+    let new_runs = poll_game_category(game_id, category_id, &latest_submitted_date)
+        .await
+        .context("Failed to poll game category from API")?;
 
     let discovered_count = new_runs.len();
 
     for new_run in &new_runs {
-        insert_run(db, new_run.clone())
+        db.insert_run(new_run.clone())
             .await
             .context("Failed to insert run into database")?;
     }
-
-    upsert_poll_state(db, game_id, category_id, now, now)
-        .await
-        .context("Failed to update poll state")?;
 
     if discovered_count > 0 {
         info!(
@@ -116,16 +94,6 @@ async fn poll_category(
     }
 
     Ok(())
-}
-
-fn should_poll(
-    poll_state: Option<&PollState>,
-    poll_interval: Duration,
-    now: DateTime<Utc>,
-) -> bool {
-    poll_state
-        .map(|state| now >= state.last_poll_time + poll_interval)
-        .unwrap_or(true)
 }
 
 async fn interruptible_sleep(
@@ -148,62 +116,6 @@ async fn interruptible_sleep(
 mod tests {
     use super::*;
     use crate::database::connection::Database;
-
-    #[test]
-    fn test_should_poll_no_previous_state() {
-        let poll_interval = Duration::seconds(3600);
-        let now = Utc::now();
-
-        assert!(should_poll(None, poll_interval, now));
-    }
-
-    #[test]
-    fn test_should_poll_interval_not_elapsed() {
-        let poll_interval = Duration::seconds(3600);
-        let now = Utc::now();
-        let last_poll = now - Duration::seconds(1800);
-
-        let poll_state = PollState {
-            game_id: "game1".to_string(),
-            category_id: "cat1".to_string(),
-            last_poll_time: last_poll,
-            last_poll_success: last_poll,
-        };
-
-        assert!(!should_poll(Some(&poll_state), poll_interval, now));
-    }
-
-    #[test]
-    fn test_should_poll_interval_elapsed() {
-        let poll_interval = Duration::seconds(3600);
-        let now = Utc::now();
-        let last_poll = now - Duration::seconds(3601);
-
-        let poll_state = PollState {
-            game_id: "game1".to_string(),
-            category_id: "cat1".to_string(),
-            last_poll_time: last_poll,
-            last_poll_success: last_poll,
-        };
-
-        assert!(should_poll(Some(&poll_state), poll_interval, now));
-    }
-
-    #[test]
-    fn test_should_poll_exactly_at_interval() {
-        let poll_interval = Duration::seconds(3600);
-        let now = Utc::now();
-        let last_poll = now - Duration::seconds(3600);
-
-        let poll_state = PollState {
-            game_id: "game1".to_string(),
-            category_id: "cat1".to_string(),
-            last_poll_time: last_poll,
-            last_poll_success: last_poll,
-        };
-
-        assert!(should_poll(Some(&poll_state), poll_interval, now));
-    }
 
     #[tokio::test]
     async fn test_poll_with_no_game_configs() {
