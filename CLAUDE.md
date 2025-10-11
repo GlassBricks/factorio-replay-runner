@@ -66,6 +66,8 @@ After modifying replay scripts in `crates/replay_script/tstl_src/rules/`,
 
 ## Code Style
 
+- Formatted with rustfmt. Make sure to format before commit
+
 - **Idiomatic Rust**: No unsafe code, prefer functional style
 - **Prefer iterators**: Use `iter()` methods over for loops
 - **Prefer functional combinators**: `map_err()`, `ok_or_else()`, `bool::then()` over simple if/match
