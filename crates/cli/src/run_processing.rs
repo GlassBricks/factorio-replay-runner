@@ -143,6 +143,9 @@ pub async fn download_and_run_replay(
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ReplayReport> {
+    info!("=== Processing Run ===");
+    info!("Run ID: {}", run_id);
+
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)?;
 

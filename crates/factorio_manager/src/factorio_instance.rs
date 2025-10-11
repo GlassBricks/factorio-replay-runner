@@ -25,6 +25,10 @@ impl FactorioInstance {
         &self.install_dir_abs
     }
 
+    pub fn log_file_path(&self) -> PathBuf {
+        self.install_dir_abs.join("factorio-current.log")
+    }
+
     pub fn create_save_file(&self, file_name: &str) -> Result<File> {
         let mut saves_path = self.install_dir_abs.join("saves");
         create_dir_all(&saves_path)?;

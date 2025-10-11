@@ -44,6 +44,12 @@ pub async fn run_replay(
     expected_mods: &ExpectedMods,
     log_path: &Path,
 ) -> Result<ReplayReport> {
+    info!("=== Run Information ===");
+    info!("Save file: {}", save_path.display());
+
+    let version = save_file.get_factorio_version()?;
+    info!("Save version: {}", version);
+
     let mut instance = get_instance(install_dir, save_file).await?;
     perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
     let installed_save_path = install_replay_script(save_path, save_file, rules).await?;
@@ -96,10 +102,26 @@ async fn run_and_log_replay(
     let exit_status = process.wait().await?;
     let exited_successfully = exit_status.success();
 
+    copy_factorio_log(instance, log_path)?;
+
     Ok(ReplayReport {
         max_msg_level,
         exited_successfully,
     })
+}
+
+fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<()> {
+    let factorio_log = instance.log_file_path();
+    factorio_log
+        .exists()
+        .then(|| {
+            let output_dir = log_path.parent().unwrap();
+            let dest_path = output_dir.join("factorio-current.log");
+            std::fs::copy(&factorio_log, &dest_path)
+                .map(|_| info!("Copied factorio log to: {}", dest_path.display()))
+        })
+        .transpose()?;
+    Ok(())
 }
 
 /// returns when stdout closes.
