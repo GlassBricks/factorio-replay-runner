@@ -22,6 +22,7 @@ mod daemon;
 mod database;
 mod run_processing;
 mod run_replay;
+mod speedrun_api;
 
 #[derive(Parser)]
 #[command(name = "factorio-replay-cli")]

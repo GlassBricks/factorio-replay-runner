@@ -4,13 +4,8 @@ use chrono::Utc;
 use factorio_manager::expected_mods::ExpectedMods;
 use factorio_manager::factorio_install_dir::FactorioInstallDir;
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
-use futures::StreamExt as _;
 use log::debug;
 use log::info;
-use speedrun_api::SpeedrunApiClientAsync;
-use speedrun_api::api;
-use speedrun_api::api::AsyncQuery;
-use speedrun_api::api::PagedEndpointExt as _;
 use std::fs::File;
 use std::path::Path;
 use zip_downloader::FileDownloader;
@@ -21,6 +16,7 @@ use zip_downloader::services::speedrun::SpeedrunService;
 use crate::config::RunRules;
 use crate::database::types::NewRun;
 use crate::run_replay::{ReplayReport, run_replay};
+use crate::speedrun_api::{RunsQuery, SpeedrunClient};
 
 pub struct RunProcessor {
     downloader: FileDownloader,
@@ -45,9 +41,8 @@ impl RunProcessor {
 
     async fn fetch_run_description(&self, run_id: &str) -> Result<String> {
         info!("Fetching run data for {}", run_id);
-        let client = SpeedrunApiClientAsync::new()?;
-        let query = api::runs::Run::builder().id(run_id).build()?;
-        let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
+        let client = SpeedrunClient::new()?;
+        let run = client.get_run(run_id).await?;
 
         let description = run
             .comment
@@ -93,17 +88,16 @@ impl Default for RunProcessor {
 
 pub async fn fetch_run_details(run_id: &str) -> Result<(String, String, String, DateTime<Utc>)> {
     info!("Fetching run details for {}", run_id);
-    let client = SpeedrunApiClientAsync::new()?;
-    let query = api::runs::Run::builder().id(run_id).build()?;
-    let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
+    let client = SpeedrunClient::new()?;
+    let run = client.get_run(run_id).await?;
 
-    let game_id = run.game.to_string();
-    let category_id = run.category.to_string();
-    let run_id = run.id.to_string();
+    let game_id = run.game;
+    let category_id = run.category;
+    let run_id = run.id;
     let submitted_date = run
         .submitted
         .ok_or_else(|| anyhow::anyhow!("Run has no submitted date"))?;
-    let submitted_date = parse_datetime(&submitted_date)?;
+    let submitted_date = crate::speedrun_api::parse_datetime(&submitted_date)?;
 
     Ok((run_id, game_id, category_id, submitted_date))
 }
@@ -118,36 +112,28 @@ pub async fn poll_game_category(
         game_id, category_id
     );
 
-    let client = SpeedrunApiClientAsync::new()?;
+    let client = SpeedrunClient::new()?;
 
-    let endpoint = api::runs::Runs::builder()
+    let query = RunsQuery::new()
         .game(game_id)
         .category(category_id)
-        .orderby(api::runs::RunsSorting::Submitted)
-        .direction(api::Direction::Asc)
-        .build()?;
+        .orderby("submitted")
+        .direction("asc");
 
-    let mut stream = endpoint.stream(&client);
-    let mut new_runs = Vec::new();
+    let runs = client.stream_runs(&query).await?;
 
-    while let Some(result) = stream.next().await {
-        let run: speedrun_api::types::Run = result?;
-        if let Some(submitted_dt) = run.submitted
-            && let Ok(submitted_date) = parse_datetime(&submitted_dt)
-            && (submitted_date >= *cutoff_date)
-        {
-            let new_run = NewRun::new(run.id.to_string(), game_id, category_id, submitted_date);
-
-            new_runs.push(new_run);
-        };
-    }
+    let new_runs: Vec<NewRun> = runs
+        .into_iter()
+        .filter_map(|run| {
+            let submitted_dt = run.submitted?;
+            let submitted_date = crate::speedrun_api::parse_datetime(&submitted_dt).ok()?;
+            (submitted_date >= *cutoff_date)
+                .then(|| NewRun::new(run.id, game_id, category_id, submitted_date))
+        })
+        .collect();
 
     debug!("Found {} new runs", new_runs.len());
     Ok(new_runs)
-}
-
-fn parse_datetime(s: &str) -> Result<DateTime<Utc>> {
-    Ok(DateTime::parse_from_rfc3339(s)?.with_timezone(&Utc))
 }
 
 pub async fn download_and_run_replay(

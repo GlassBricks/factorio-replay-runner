@@ -24,7 +24,7 @@ pub struct ReplayReport {
 }
 
 impl ReplayReport {
-    pub fn to_exit_code(&self) -> i32 {
+    pub fn to_exit_code(self) -> i32 {
         if !self.exited_successfully {
             10
         } else {
