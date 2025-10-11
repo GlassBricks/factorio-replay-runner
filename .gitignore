@@ -9,4 +9,4 @@
 /worktrees/
 .claude
 **/.sqlx
-run_verification.db
+run_verification.db*
