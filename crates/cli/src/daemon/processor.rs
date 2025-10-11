@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use log::{error, info, warn};
+use log::{error, info};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,7 +9,6 @@ use crate::config::{GameConfig, SrcRunRules};
 use crate::database::connection::Database;
 use crate::database::types::Run;
 use crate::run_processing::download_and_run_replay;
-use replay_script::MsgLevel;
 
 #[derive(Debug)]
 pub enum ProcessResult {
@@ -103,33 +102,7 @@ async fn process_run(
     )
     .await;
 
-    match result {
-        Ok(report) if report.exited_successfully => match report.max_msg_level {
-            MsgLevel::Info => {
-                db.mark_run_passed(&run_id).await?;
-                info!("Run {} passed verification", run_id);
-            }
-            MsgLevel::Warn => {
-                db.mark_run_needs_review(&run_id).await?;
-                warn!("Run {} passed with warnings (needs review)", run_id);
-            }
-            MsgLevel::Error => {
-                db.mark_run_failed(&run_id).await?;
-                warn!("Run {} failed verification", run_id);
-            }
-        },
-        Ok(_) => {
-            let error_msg = "Replay did not exit successfully";
-            db.mark_run_error(&run_id, error_msg).await?;
-            error!("Run {} error: {}", run_id, error_msg);
-        }
-        Err(e) => {
-            let error_msg = format!("Failed to process run: {:#}", e);
-            db.mark_run_error(&run_id, &error_msg).await?;
-            error!("Run {} error: {}", run_id, error_msg);
-        }
-    }
-    Ok(())
+    db.process_replay_result(&run_id, result).await
 }
 
 #[cfg(test)]

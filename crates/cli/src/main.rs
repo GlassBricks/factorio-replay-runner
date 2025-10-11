@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::run_processing::{download_and_run_replay, fetch_run_metadata};
+use crate::run_processing::download_and_run_replay;
 
 mod config;
 mod daemon;
@@ -76,6 +76,10 @@ struct RunReplayFromSrcArgs {
     ///     {log}.txt
     #[arg(short, long, default_value = "./src_runs")]
     output_dir: PathBuf,
+
+    /// SQLite database path for tracking run status
+    #[arg(long, default_value = "run_verification.db")]
+    database_path: PathBuf,
 }
 
 #[derive(Args)]
@@ -157,9 +161,17 @@ async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
         game_rules_file,
         install_dir,
         output_dir,
+        database_path,
     } = args;
 
-    let result = run_src(&run_id, &game_rules_file, &install_dir, &output_dir).await;
+    let result = run_src(
+        &run_id,
+        &game_rules_file,
+        &install_dir,
+        &output_dir,
+        &database_path,
+    )
+    .await;
     Ok(result_to_exit_code(&result))
 }
 
@@ -168,11 +180,15 @@ async fn run_src(
     game_rules_file: &Path,
     install_dir: &Path,
     output_dir: &Path,
+    database_path: &Path,
 ) -> Result<ReplayReport> {
     let rules = load_src_rules(game_rules_file).await?;
+    let db = database::connection::Database::new(database_path).await?;
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
-    let (game_id, category_id) = fetch_run_metadata(run_id).await?;
+    let (fetched_run_id, game_id, category_id, submitted_date) =
+        run_processing::fetch_run_details(run_id).await?;
+
     let game_config = rules
         .games
         .get(&game_id)
@@ -186,7 +202,35 @@ async fn run_src(
     info!("Game: {}, Category: {}", game_name, category_name);
     let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
 
-    download_and_run_replay(run_id, run_rules, expected_mods, install_dir, output_dir).await
+    let new_run =
+        database::types::NewRun::new(fetched_run_id.clone(), game_id, category_id, submitted_date);
+    db.insert_run(new_run)
+        .await
+        .or_else(|e| {
+            if e.to_string().contains("UNIQUE constraint failed") {
+                info!("Run already exists in database");
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })
+        .context("Failed to insert run into database")?;
+
+    db.mark_run_processing(&fetched_run_id).await?;
+
+    let result = download_and_run_replay(
+        &fetched_run_id,
+        run_rules,
+        expected_mods,
+        install_dir,
+        output_dir,
+    )
+    .await;
+
+    let report = result.as_ref().ok().cloned();
+    db.process_replay_result(&fetched_run_id, result).await?;
+
+    report.ok_or_else(|| anyhow::anyhow!("Failed to process replay"))
 }
 
 async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {

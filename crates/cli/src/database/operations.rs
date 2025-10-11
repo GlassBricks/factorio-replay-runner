@@ -2,6 +2,10 @@ use super::connection::Database;
 use super::types::{NewRun, Run, RunStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use log::{error, info, warn};
+use replay_script::MsgLevel;
+
+use crate::run_replay::ReplayReport;
 
 impl Database {
     pub async fn insert_run(&self, new_run: NewRun) -> Result<()> {
@@ -144,6 +148,40 @@ impl Database {
         .await?;
 
         Ok(result.latest)
+    }
+
+    pub async fn process_replay_result(
+        &self,
+        run_id: &str,
+        result: Result<ReplayReport>,
+    ) -> Result<()> {
+        match result {
+            Ok(report) if report.exited_successfully => match report.max_msg_level {
+                MsgLevel::Info => {
+                    self.mark_run_passed(run_id).await?;
+                    info!("Run {} passed verification", run_id);
+                }
+                MsgLevel::Warn => {
+                    self.mark_run_needs_review(run_id).await?;
+                    warn!("Run {} passed with warnings (needs review)", run_id);
+                }
+                MsgLevel::Error => {
+                    self.mark_run_failed(run_id).await?;
+                    warn!("Run {} failed verification", run_id);
+                }
+            },
+            Ok(_) => {
+                let error_msg = "Replay did not exit successfully";
+                self.mark_run_error(run_id, error_msg).await?;
+                error!("Run {} error: {}", run_id, error_msg);
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to process run: {:#}", e);
+                self.mark_run_error(run_id, &error_msg).await?;
+                error!("Run {} error: {}", run_id, error_msg);
+            }
+        }
+        Ok(())
     }
 }
 

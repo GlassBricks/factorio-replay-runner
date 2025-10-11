@@ -99,7 +99,15 @@ async fn test_cli_run_src() -> Result<()> {
     }
     fs::create_dir_all(&test_dir)?;
 
-    let result = run_src(TEST_RUN_ID, &rules_path, &install_dir_path, &test_dir).await;
+    let database_path = test_dir.join("test.db");
+    let result = run_src(
+        TEST_RUN_ID,
+        &rules_path,
+        &install_dir_path,
+        &test_dir,
+        &database_path,
+    )
+    .await;
 
     match result {
         Ok(_) => {

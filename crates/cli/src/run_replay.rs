@@ -17,6 +17,7 @@ use replay_script::{MsgLevel, ReplayMsg};
 
 use crate::config::RunRules;
 
+#[derive(Clone, Copy)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
     pub exited_successfully: bool,

@@ -91,16 +91,21 @@ impl Default for RunProcessor {
     }
 }
 
-pub async fn fetch_run_metadata(run_id: &str) -> Result<(String, String)> {
-    info!("Fetching run metadata for {}", run_id);
+pub async fn fetch_run_details(run_id: &str) -> Result<(String, String, String, DateTime<Utc>)> {
+    info!("Fetching run details for {}", run_id);
     let client = SpeedrunApiClientAsync::new()?;
     let query = api::runs::Run::builder().id(run_id).build()?;
     let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
 
     let game_id = run.game.to_string();
     let category_id = run.category.to_string();
+    let run_id = run.id.to_string();
+    let submitted_date = run
+        .submitted
+        .ok_or_else(|| anyhow::anyhow!("Run has no submitted date"))?;
+    let submitted_date = parse_datetime(&submitted_date)?;
 
-    Ok((game_id, category_id))
+    Ok((run_id, game_id, category_id, submitted_date))
 }
 
 pub async fn poll_game_category(
