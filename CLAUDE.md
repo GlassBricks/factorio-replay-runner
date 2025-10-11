@@ -41,16 +41,21 @@ Downloads and validates zip files from various sources:
 Main entry point that orchestrates everything:
 - `main.rs`: CLI argument parsing with clap
 - `run_replay.rs`: core replay execution logic
-- `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig` - defines validation rules and configuration
+- `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig`, `DaemonConfig` - defines validation rules and configuration
 - `src_integration.rs`: speedrun.com integration
+- `run_lookup.rs`: queries speedrun.com API for new verified runs in a game/category
+- `daemon.rs`: daemon orchestration with graceful shutdown handling
+  - `poller.rs`: polls speedrun.com periodically for new runs
+  - `processor.rs`: processes pending runs from database queue
 - `database/`: SQLite database infrastructure for run tracking
   - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
   - `connection.rs`: `Database` wrapper around sqlx pool with migrations
   - `operations.rs`: database CRUD operations for runs and poll state
   - `migrations/`: SQL migration files for schema versioning
-- Two main commands:
+- Main commands:
   - `run`: Run replay on local save file with rules
   - `run-src`: Run replay fetched from speedrun.com
+  - `daemon`: Background service that polls and processes speedrun.com runs
 
 ## Working with TypeScript/Lua Scripts
 
