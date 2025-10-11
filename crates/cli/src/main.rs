@@ -41,17 +41,17 @@ enum Commands {
 #[derive(Args)]
 struct RunReplayOnFileArgs {
     /// Factorio save file
-    save_file: PathBuf,
+    save: PathBuf,
 
-    /// RUN Rules file (json/yaml)
-    run_rules_file: PathBuf,
+    /// RUN Rules (json/yaml)
+    run_rules: PathBuf,
 
     /// Factorio installations directory (defaults to ./factorio_installs)
     /// Installs will created at {install_dir}/{version}/
     #[arg(long, default_value = "./factorio_installs")]
     install_dir: PathBuf,
 
-    /// Output file path; defaults to save file name with .txt extension
+    /// Output file; defaults to save file name with .txt extension
     #[arg(short, long)]
     output: Option<PathBuf>,
 }
@@ -61,32 +61,32 @@ struct RunReplayFromSrcArgs {
     /// Run id (if not provided, polls speedrun.com once and processes one run)
     run_id: Option<String>,
 
-    /// GAME rules file (yaml)
+    /// GAME rules (yaml)
     #[arg(default_value = "./speedrun_rules.yaml")]
-    game_rules_file: PathBuf,
+    game_rules: PathBuf,
 
     /// Factorio installations directory (defaults to ./factorio_installs)
     /// Installs will created at {install_dir}/{version}/
     #[arg(long, default_value = "./factorio_installs")]
     install_dir: PathBuf,
 
-    /// Output path; defaults to ./src_runs
+    /// Output directory; defaults to ./src_runs
     /// Files will be written to {output_dir}/{run_id}/
     ///     {save_name}.zip
     ///     {log}.txt
     #[arg(short, long, default_value = "./src_runs")]
     output_dir: PathBuf,
 
-    /// SQLite database path for tracking run status
+    /// SQLite database for tracking run status
     #[arg(long, default_value = "run_verification.db")]
-    database_path: PathBuf,
+    database: PathBuf,
 }
 
 #[derive(Args)]
 struct DaemonArgs {
-    /// Daemon configuration file (yaml)
+    /// Daemon configuration (yaml)
     #[arg(short, long, default_value = "./daemon.yaml")]
-    config_file: PathBuf,
+    config: PathBuf,
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -122,26 +122,26 @@ fn init_logger() {
 
 async fn cli_run_file(args: RunReplayOnFileArgs) -> Result<i32> {
     let RunReplayOnFileArgs {
-        save_file,
-        run_rules_file: rules_file,
+        save,
+        run_rules,
         install_dir,
         output,
     } = args;
-    let output_path = output.unwrap_or_else(|| save_file.with_extension("log"));
+    let output_path = output.unwrap_or_else(|| save.with_extension("log"));
 
-    let result = run_file(&save_file, &rules_file, &install_dir, &output_path).await;
+    let result = run_file(&save, &run_rules, &install_dir, &output_path).await;
     Ok(result_to_exit_code(&result))
 }
 
 async fn run_file(
-    save_file: &Path,
-    rules_file: &Path,
+    save: &Path,
+    rules: &Path,
     install_dir: &Path,
-    output_path: &Path,
+    output: &Path,
 ) -> Result<ReplayReport> {
     let install_dir = load_install_dir(install_dir).await?;
-    let mut save_file = load_save_file(save_file).await?;
-    let rules = load_run_rules(rules_file).await?;
+    let mut save_file = load_save(save).await?;
+    let rules = load_run_rules(rules).await?;
     run_replay(
         &install_dir,
         &mut save_file,
@@ -150,7 +150,7 @@ async fn run_file(
             .expected_mods_override
             .as_ref()
             .expect("Expected mods is required for basic rules"),
-        output_path,
+        output,
     )
     .await
 }
@@ -158,37 +158,30 @@ async fn run_file(
 async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
     let RunReplayFromSrcArgs {
         run_id,
-        game_rules_file,
+        game_rules,
         install_dir,
         output_dir,
-        database_path,
+        database,
     } = args;
 
     match run_id {
         Some(run_id) => {
-            let result = run_src(
-                &run_id,
-                &game_rules_file,
-                &install_dir,
-                &output_dir,
-                &database_path,
-            )
-            .await;
+            let result = run_src(&run_id, &game_rules, &install_dir, &output_dir, &database).await;
             Ok(result_to_exit_code(&result))
         }
-        None => run_src_once(&game_rules_file, &install_dir, &output_dir, &database_path).await,
+        None => run_src_once(&game_rules, &install_dir, &output_dir, &database).await,
     }
 }
 
 async fn run_src(
     run_id: &str,
-    game_rules_file: &Path,
+    game_rules: &Path,
     install_dir: &Path,
     output_dir: &Path,
-    database_path: &Path,
+    database: &Path,
 ) -> Result<ReplayReport> {
-    let rules = load_src_rules(game_rules_file).await?;
-    let db = database::connection::Database::new(database_path).await?;
+    let rules = load_src_rules(game_rules).await?;
+    let db = database::connection::Database::new(database).await?;
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
     let (fetched_run_id, game_id, category_id, submitted_date) =
@@ -239,16 +232,16 @@ async fn run_src(
 }
 
 async fn run_src_once(
-    game_rules_file: &Path,
+    game_rules: &Path,
     install_dir: &Path,
     output_dir: &Path,
-    database_path: &Path,
+    database: &Path,
 ) -> Result<i32> {
     let daemon_config = load_daemon_config(&PathBuf::from("./daemon.yaml"))
         .await
         .context("Failed to load daemon config")?;
-    let src_rules = load_src_rules(game_rules_file).await?;
-    let db = database::connection::Database::new(database_path).await?;
+    let src_rules = load_src_rules(game_rules).await?;
+    let db = database::connection::Database::new(database).await?;
 
     std::fs::create_dir_all(install_dir)?;
     std::fs::create_dir_all(output_dir)?;
@@ -271,43 +264,37 @@ async fn run_src_once(
 }
 
 async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {
-    let DaemonArgs { config_file } = args;
+    let DaemonArgs { config } = args;
 
-    let daemon_config = load_daemon_config(&config_file).await?;
+    let daemon_config = load_daemon_config(&config).await?;
     let src_rules = load_src_rules(&daemon_config.game_rules_file).await?;
 
     daemon::run_daemon(daemon_config, src_rules.games, coordinator).await?;
     Ok(0)
 }
 
-async fn load_install_dir(install_dir_path: &Path) -> Result<FactorioInstallDir> {
-    FactorioInstallDir::new_or_create(install_dir_path).with_context(|| {
-        format!(
-            "Failed to create install directory: {}",
-            install_dir_path.display()
-        )
-    })
+async fn load_install_dir(path: &Path) -> Result<FactorioInstallDir> {
+    FactorioInstallDir::new_or_create(path)
+        .with_context(|| format!("Failed to create install directory: {}", path.display()))
 }
 
-async fn load_save_file(save_file_path: &Path) -> Result<WrittenSaveFile> {
+async fn load_save(path: &Path) -> Result<WrittenSaveFile> {
     Ok(WrittenSaveFile(
-        save_file_path.to_path_buf(),
-        SaveFile::new(File::open(save_file_path)?)?,
+        path.to_path_buf(),
+        SaveFile::new(File::open(path)?)?,
     ))
 }
 
-async fn load_run_rules(rules_file_path: &Path) -> Result<RunRules> {
-    serde_yaml::from_reader(File::open(rules_file_path)?).with_context(|| "failed to load rules")
+async fn load_run_rules(path: &Path) -> Result<RunRules> {
+    serde_yaml::from_reader(File::open(path)?).with_context(|| "failed to load rules")
 }
 
-async fn load_src_rules(game_rules_file_path: &Path) -> Result<SrcRunRules> {
-    serde_yaml::from_reader(File::open(game_rules_file_path)?)
-        .with_context(|| "failed to load src rules")
+async fn load_src_rules(path: &Path) -> Result<SrcRunRules> {
+    serde_yaml::from_reader(File::open(path)?).with_context(|| "failed to load src rules")
 }
 
-async fn load_daemon_config(config_file_path: &Path) -> Result<DaemonConfig> {
-    serde_yaml::from_reader(File::open(config_file_path)?)
-        .with_context(|| "failed to load daemon config")
+async fn load_daemon_config(path: &Path) -> Result<DaemonConfig> {
+    serde_yaml::from_reader(File::open(path)?).with_context(|| "failed to load daemon config")
 }
 
 fn result_to_exit_code<T>(result: &Result<ReplayReport, T>) -> i32 {
