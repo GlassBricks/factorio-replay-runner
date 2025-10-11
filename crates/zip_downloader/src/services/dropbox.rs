@@ -59,12 +59,7 @@ async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta> {
                 .and_then(|s| s.split(';').next())
                 .map(|s| s.trim_matches('"'))
         })
-        .or_else(|| {
-            file_id
-                .url()
-                .split('/')
-                .find(|s| s.ends_with(".zip"))
-        })
+        .or_else(|| file_id.url().split('/').find(|s| s.ends_with(".zip")))
         .unwrap_or("unknown.zip")
         .to_string();
 

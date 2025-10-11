@@ -9,7 +9,7 @@ use crate::config::{DaemonConfig, GameConfig};
 use crate::database::connection::Database;
 use crate::database::operations::{get_poll_state, insert_run, upsert_poll_state};
 use crate::database::types::PollState;
-use crate::run_lookup;
+use crate::run_processing::poll_game_category;
 
 pub async fn poll_speedrun_com_loop(
     db: Database,
@@ -95,7 +95,7 @@ async fn poll_category(
         .map(|state| state.last_poll_time)
         .unwrap_or(cutoff_date);
 
-    let new_runs = run_lookup::poll_game_category(
+    let new_runs = poll_game_category(
         game_id,
         category_id,
         &last_poll_time.to_rfc3339(),

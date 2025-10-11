@@ -69,18 +69,18 @@ mod tests {
 
     #[test]
     fn test_configure_script() {
-            let scripts = ReplayScripts {
-                blueprint_import: true,
-                win_on_rocket_launch: true,
-                max_players: Some(137),
-                ..Default::default()
-            };
+        let scripts = ReplayScripts {
+            blueprint_import: true,
+            win_on_rocket_launch: true,
+            max_players: Some(137),
+            ..Default::default()
+        };
 
-            let output = scripts.to_string();
-            assert!(!output.contains("blueprint_import"));
-            assert!(output.contains("win_on_rocket_launch"));
-            assert!(output.contains("local maxPlayers = 137"));
-        }
+        let output = scripts.to_string();
+        assert!(!output.contains("blueprint_import"));
+        assert!(output.contains("win_on_rocket_launch"));
+        assert!(output.contains("local maxPlayers = 137"));
+    }
 
     #[test]
     fn test_all_enabled() {

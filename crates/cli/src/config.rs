@@ -49,9 +49,10 @@ impl SrcRunRules {
         game_id: &str,
         category_id: &str,
     ) -> Result<(&RunRules, &ExpectedMods)> {
-        let game_config = self.games.get(game_id).ok_or_else(|| {
-            anyhow::anyhow!("No configuration found for game={}", game_id)
-        })?;
+        let game_config = self
+            .games
+            .get(game_id)
+            .ok_or_else(|| anyhow::anyhow!("No configuration found for game={}", game_id))?;
 
         let category_config = game_config.categories.get(category_id).ok_or_else(|| {
             anyhow::anyhow!("No configuration found for category={}", category_id)

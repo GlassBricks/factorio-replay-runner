@@ -1,15 +1,27 @@
 use anyhow::{Context, Result};
+use chrono::DateTime;
+use chrono::Utc;
+use factorio_manager::expected_mods::ExpectedMods;
+use factorio_manager::factorio_install_dir::FactorioInstallDir;
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
+use futures::StreamExt as _;
+use log::debug;
 use log::info;
+use speedrun_api::SpeedrunApiClientAsync;
 use speedrun_api::api;
 use speedrun_api::api::AsyncQuery;
-use speedrun_api::SpeedrunApiClientAsync;
+use speedrun_api::api::PagedEndpointExt as _;
+use speedrun_api::api::runs::RunStatus;
 use std::fs::File;
 use std::path::Path;
+use zip_downloader::FileDownloader;
 use zip_downloader::services::dropbox::DropboxService;
 use zip_downloader::services::gdrive::GoogleDriveService;
 use zip_downloader::services::speedrun::SpeedrunService;
-use zip_downloader::FileDownloader;
+
+use crate::config::RunRules;
+use crate::database::types::NewRun;
+use crate::run_replay::{ReplayReport, run_replay};
 
 pub struct RunProcessor {
     downloader: FileDownloader,
@@ -32,21 +44,26 @@ impl RunProcessor {
         Ok(Self { downloader })
     }
 
-    pub async fn fetch_and_download_run(
-        &mut self,
-        run_id: &str,
-        working_dir: &Path,
-    ) -> Result<WrittenSaveFile> {
+    async fn fetch_run_description(&self, run_id: &str) -> Result<String> {
         info!("Fetching run data for {}", run_id);
         let client = SpeedrunApiClientAsync::new()?;
         let query = api::runs::Run::builder().id(run_id).build()?;
         let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
 
-        let description = run.comment.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Comment with link needed for run {}", run_id)
-        })?;
+        let description = run
+            .comment
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Comment with link needed for run {}", run_id))?;
 
-        info!("Downloading save file for run {}", run_id);
+        Ok(description.to_string())
+    }
+
+    async fn download_save(
+        &mut self,
+        description: &str,
+        working_dir: &Path,
+    ) -> Result<WrittenSaveFile> {
+        info!("Downloading save file");
         let save_file_info = self
             .downloader
             .download_zip(description, working_dir)
@@ -59,19 +76,13 @@ impl RunProcessor {
         Ok(WrittenSaveFile(save_path, save_file))
     }
 
-    pub async fn fetch_run_metadata(
-        &self,
+    pub async fn download_run_save(
+        &mut self,
         run_id: &str,
-    ) -> Result<(String, String)> {
-        info!("Fetching run metadata for {}", run_id);
-        let client = SpeedrunApiClientAsync::new()?;
-        let query = api::runs::Run::builder().id(run_id).build()?;
-        let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
-
-        let game_id = run.game.to_string();
-        let category_id = run.category.to_string();
-
-        Ok((game_id, category_id))
+        working_dir: &Path,
+    ) -> Result<WrittenSaveFile> {
+        let description = self.fetch_run_description(run_id).await?;
+        self.download_save(&description, working_dir).await
     }
 }
 
@@ -79,4 +90,97 @@ impl Default for RunProcessor {
     fn default() -> Self {
         Self::new().expect("Failed to create RunProcessor")
     }
+}
+
+pub async fn fetch_run_metadata(run_id: &str) -> Result<(String, String)> {
+    info!("Fetching run metadata for {}", run_id);
+    let client = SpeedrunApiClientAsync::new()?;
+    let query = api::runs::Run::builder().id(run_id).build()?;
+    let run: speedrun_api::types::Run<'_> = query.query_async(&client).await?;
+
+    let game_id = run.game.to_string();
+    let category_id = run.category.to_string();
+
+    Ok((game_id, category_id))
+}
+
+pub async fn poll_game_category(
+    game_id: &str,
+    category_id: &str,
+    last_poll_time: &str,
+    cutoff_date: &str,
+) -> Result<Vec<NewRun>> {
+    info!(
+        "Polling for new runs: game={}, category={}",
+        game_id, category_id
+    );
+
+    let client = SpeedrunApiClientAsync::new()?;
+
+    let last_poll_dt = parse_datetime(last_poll_time)?;
+    let cutoff_dt = parse_datetime(cutoff_date)?;
+
+    let endpoint = api::runs::Runs::builder()
+        .game(game_id)
+        .category(category_id)
+        .status(RunStatus::Verified)
+        .orderby(api::runs::RunsSorting::Submitted)
+        .direction(api::Direction::Asc)
+        .build()?;
+
+    let mut stream = endpoint.stream(&client);
+    let mut new_runs = Vec::new();
+
+    while let Some(result) = stream.next().await {
+        let run: speedrun_api::types::Run = result?;
+
+        let submitted_dt = run.submitted.as_ref().and_then(|s| parse_datetime(s).ok());
+
+        let should_include = submitted_dt
+            .map(|dt| dt > last_poll_dt && dt >= cutoff_dt)
+            .unwrap_or(false);
+
+        if !should_include {
+            continue;
+        }
+
+        let submitted_date = submitted_dt.unwrap_or_else(Utc::now);
+
+        let new_run = NewRun::new(run.id.to_string(), game_id, category_id, submitted_date);
+
+        new_runs.push(new_run);
+    }
+
+    debug!("Found {} new runs", new_runs.len());
+    Ok(new_runs)
+}
+
+fn parse_datetime(s: &str) -> Result<DateTime<Utc>> {
+    Ok(DateTime::parse_from_rfc3339(s)?.with_timezone(&Utc))
+}
+
+pub async fn download_and_run_replay(
+    run_id: &str,
+    run_rules: &RunRules,
+    expected_mods: &ExpectedMods,
+    install_dir: &Path,
+    output_dir: &Path,
+) -> Result<ReplayReport> {
+    let working_dir = output_dir.join(run_id);
+    std::fs::create_dir_all(&working_dir)?;
+
+    let mut processor = RunProcessor::new()?;
+    let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
+
+    let install_dir = FactorioInstallDir::new_or_create(install_dir)?;
+    let log_path = working_dir.join("output.log");
+
+    run_replay(
+        &install_dir,
+        &mut save_file,
+        run_rules,
+        expected_mods,
+        &log_path,
+    )
+    .await
 }

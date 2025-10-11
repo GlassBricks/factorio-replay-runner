@@ -12,9 +12,7 @@ use crate::database::operations::{
     mark_run_passed, mark_run_processing,
 };
 use crate::database::types::Run;
-use crate::run_processing::RunProcessor;
-use crate::run_replay::{ReplayReport, run_replay};
-use factorio_manager::factorio_install_dir::FactorioInstallDir;
+use crate::run_processing::download_and_run_replay;
 use replay_script::MsgLevel;
 
 #[derive(Debug)]
@@ -100,8 +98,14 @@ async fn process_run(
 
     info!("Processing run: {}", run_id);
 
-    let result =
-        setup_and_run_replay(&run, run_rules, expected_mods, install_dir, output_dir).await;
+    let result = download_and_run_replay(
+        &run.run_id,
+        run_rules,
+        expected_mods,
+        install_dir,
+        output_dir,
+    )
+    .await;
 
     match result {
         Ok(report) if report.exited_successfully => match report.max_msg_level {
@@ -130,34 +134,6 @@ async fn process_run(
         }
     }
     Ok(())
-}
-
-async fn setup_and_run_replay(
-    run: &Run,
-    run_rules: &crate::config::RunRules,
-    expected_mods: &factorio_manager::expected_mods::ExpectedMods,
-    install_dir: &Path,
-    output_dir: &Path,
-) -> Result<ReplayReport> {
-    let working_dir = output_dir.join(&run.run_id);
-    std::fs::create_dir_all(&working_dir)?;
-
-    let mut processor = RunProcessor::new()?;
-    let mut save_file = processor
-        .fetch_and_download_run(&run.run_id, &working_dir)
-        .await?;
-
-    let install_dir = FactorioInstallDir::new_or_create(install_dir)?;
-
-    let log_path = working_dir.join("output.log");
-    run_replay(
-        &install_dir,
-        &mut save_file,
-        run_rules,
-        expected_mods,
-        &log_path,
-    )
-    .await
 }
 
 #[cfg(test)]
@@ -200,7 +176,8 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(
-            error_msg.contains("No configuration found") || error_msg.contains("Failed to resolve rules"),
+            error_msg.contains("No configuration found")
+                || error_msg.contains("Failed to resolve rules"),
             "Unexpected error message: {}",
             error_msg
         );

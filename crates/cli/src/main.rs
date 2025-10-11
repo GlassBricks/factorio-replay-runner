@@ -1,27 +1,27 @@
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
+use config::{DaemonConfig, RunRules, SrcRunRules};
 use factorio_manager::{
     factorio_install_dir::FactorioInstallDir,
     process_manager::GLOBAL_PROCESS_MANAGER,
     save_file::{SaveFile, WrittenSaveFile},
     shutdown::ShutdownCoordinator,
 };
-use config::{DaemonConfig, RunRules, SrcRunRules};
+use log::info;
 use run_replay::{ReplayReport, run_replay};
-use src_integration::run_replay_from_src_run;
 use std::{
     fs::File,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
+use crate::run_processing::{download_and_run_replay, fetch_run_metadata};
+
 mod config;
 mod daemon;
 mod database;
-mod run_lookup;
 mod run_processing;
 mod run_replay;
-mod src_integration;
 
 #[derive(Parser)]
 #[command(name = "factorio-replay-cli")]
@@ -189,9 +189,24 @@ async fn run_src(
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ReplayReport> {
-    let install_dir = load_install_dir(install_dir).await?;
     let rules = load_src_rules(game_rules_file).await?;
-    run_replay_from_src_run(run_id, &install_dir, &rules, output_dir).await
+
+    info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
+    let (game_id, category_id) = fetch_run_metadata(run_id).await?;
+    let game_config = rules
+        .games
+        .get(&game_id)
+        .ok_or_else(|| anyhow::anyhow!("No rules configured for game ID: {}", game_id))?;
+    let category_config = game_config
+        .categories
+        .get(&category_id)
+        .ok_or_else(|| anyhow::anyhow!("No rules configured for category ID: {}", category_id))?;
+    let game_name = game_config.name.as_deref().unwrap_or(&game_id);
+    let category_name = category_config.name.as_deref().unwrap_or(&category_id);
+    info!("Game: {}, Category: {}", game_name, category_name);
+    let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
+
+    download_and_run_replay(run_id, run_rules, expected_mods, install_dir, output_dir).await
 }
 
 async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {
@@ -211,8 +226,14 @@ async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Resul
         cutoff_date,
     };
 
-    daemon::run_daemon(daemon_config, src_rules.games, install_dir, output_dir, coordinator)
-        .await?;
+    daemon::run_daemon(
+        daemon_config,
+        src_rules.games,
+        install_dir,
+        output_dir,
+        coordinator,
+    )
+    .await?;
     Ok(0)
 }
 
