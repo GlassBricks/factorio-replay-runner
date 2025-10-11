@@ -54,7 +54,7 @@ pub async fn process_runs_loop(
     }
 }
 
-async fn find_run_to_process(
+pub async fn find_run_to_process(
     db: &Database,
     game_configs: &HashMap<String, GameConfig>,
     install_dir: &Path,

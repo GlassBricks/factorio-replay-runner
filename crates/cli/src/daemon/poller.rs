@@ -38,7 +38,7 @@ pub async fn poll_speedrun_com_loop(
     }
 }
 
-async fn poll_speedrun_com(
+pub async fn poll_speedrun_com(
     db: &Database,
     config: &DaemonConfig,
     game_configs: &HashMap<String, GameConfig>,

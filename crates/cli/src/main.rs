@@ -58,8 +58,8 @@ struct RunReplayOnFileArgs {
 
 #[derive(Args)]
 struct RunReplayFromSrcArgs {
-    /// Run id
-    run_id: String,
+    /// Run id (if not provided, polls speedrun.com once and processes one run)
+    run_id: Option<String>,
 
     /// GAME rules file (yaml)
     #[arg(default_value = "./speedrun_rules.yaml")]
@@ -164,15 +164,20 @@ async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {
         database_path,
     } = args;
 
-    let result = run_src(
-        &run_id,
-        &game_rules_file,
-        &install_dir,
-        &output_dir,
-        &database_path,
-    )
-    .await;
-    Ok(result_to_exit_code(&result))
+    match run_id {
+        Some(run_id) => {
+            let result = run_src(
+                &run_id,
+                &game_rules_file,
+                &install_dir,
+                &output_dir,
+                &database_path,
+            )
+            .await;
+            Ok(result_to_exit_code(&result))
+        }
+        None => run_src_once(&game_rules_file, &install_dir, &output_dir, &database_path).await,
+    }
 }
 
 async fn run_src(
@@ -231,6 +236,38 @@ async fn run_src(
     db.process_replay_result(&fetched_run_id, result).await?;
 
     report.ok_or_else(|| anyhow::anyhow!("Failed to process replay"))
+}
+
+async fn run_src_once(
+    game_rules_file: &Path,
+    install_dir: &Path,
+    output_dir: &Path,
+    database_path: &Path,
+) -> Result<i32> {
+    let daemon_config = load_daemon_config(&PathBuf::from("./daemon.yaml"))
+        .await
+        .context("Failed to load daemon config")?;
+    let src_rules = load_src_rules(game_rules_file).await?;
+    let db = database::connection::Database::new(database_path).await?;
+
+    std::fs::create_dir_all(install_dir)?;
+    std::fs::create_dir_all(output_dir)?;
+
+    info!("Polling speedrun.com for new runs");
+    let work_notify = Arc::new(tokio::sync::Notify::new());
+    daemon::poll_speedrun_com(&db, &daemon_config, &src_rules.games, &work_notify).await?;
+
+    info!("Processing one run from queue");
+    match daemon::find_run_to_process(&db, &src_rules.games, install_dir, output_dir).await? {
+        daemon::ProcessResult::Processed => {
+            info!("Successfully processed one run");
+            Ok(0)
+        }
+        daemon::ProcessResult::NoWork => {
+            info!("No runs available to process");
+            Ok(0)
+        }
+    }
 }
 
 async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {

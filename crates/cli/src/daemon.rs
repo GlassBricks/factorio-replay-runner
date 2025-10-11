@@ -11,8 +11,8 @@ use crate::database::connection::Database;
 mod poller;
 mod processor;
 
-pub use poller::poll_speedrun_com_loop;
-pub use processor::process_runs_loop;
+pub use poller::{poll_speedrun_com, poll_speedrun_com_loop};
+pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
 
 pub async fn run_daemon(
     config: DaemonConfig,
