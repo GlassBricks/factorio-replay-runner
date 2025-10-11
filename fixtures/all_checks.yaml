@@ -1,7 +1,7 @@
 expected_mods:
-- elevated-rails
 - base
 - quality
+- elevated-rails
 - space-age
 bad_console_commands: false
 blueprint_import: false

@@ -34,7 +34,7 @@ _G.util = util
 type MsgType = "Error" | "Warn" | "Info"
 function logEvent(type: MsgType, ...args: string[]): void {
   print(
-    "replay_script_EVENT:",
+    "REPLAY_SCRIPT_EVENT:",
     game.ticks_played,
     type,
     table.concat(args, " "),
