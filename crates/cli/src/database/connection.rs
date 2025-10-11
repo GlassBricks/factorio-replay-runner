@@ -13,28 +13,20 @@ impl Database {
         let path = path.as_ref();
         let connection_string = format!("sqlite:{}", path.display());
 
-        let options = SqliteConnectOptions::from_str(&connection_string)?
-            .create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&connection_string)?.create_if_missing(true);
 
-        let pool = SqlitePoolOptions::new()
-            .connect_with(options)
-            .await?;
+        let pool = SqlitePoolOptions::new().connect_with(options).await?;
 
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self { pool })
     }
 
+    #[cfg(test)]
     pub async fn in_memory() -> Result<Self> {
-        let pool = SqlitePoolOptions::new()
-            .connect("sqlite::memory:")
-            .await?;
+        let pool = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
 
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self { pool })
     }
@@ -51,7 +43,7 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_database_creation() {
         let db = Database::in_memory().await.unwrap();
-        assert!(db.pool().is_closed() == false);
+        assert!(!db.pool().is_closed());
     }
 
     #[tokio::test]

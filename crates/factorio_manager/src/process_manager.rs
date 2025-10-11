@@ -42,6 +42,12 @@ impl ProcessManager {
     }
 }
 
+impl Default for ProcessManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 lazy_static! {
     pub static ref GLOBAL_PROCESS_MANAGER: ProcessManager = ProcessManager::new();
 }
