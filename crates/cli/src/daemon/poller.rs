@@ -58,15 +58,7 @@ async fn poll_speedrun_com(
                 continue;
             }
 
-            if let Err(e) = poll_category(
-                db,
-                game_config,
-                game_id,
-                category_id,
-                cutoff_date,
-                work_notify,
-            )
-            .await
+            if let Err(e) = poll_category(db, game_id, category_id, cutoff_date, work_notify).await
             {
                 error!(
                     "Failed to poll game={} category={}: {:#}",
@@ -81,7 +73,6 @@ async fn poll_speedrun_com(
 
 async fn poll_category(
     db: &Database,
-    _game_config: &GameConfig,
     game_id: &str,
     category_id: &str,
     cutoff_date: DateTime<Utc>,
