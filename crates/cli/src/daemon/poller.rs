@@ -80,9 +80,9 @@ async fn poll_category(
     let discovered_count = new_runs.len();
 
     for new_run in &new_runs {
-        db.insert_run(new_run.clone())
-            .await
-            .context("Failed to insert run into database")?;
+        if let Err(e) = db.insert_run(new_run.clone()).await {
+            error!("Failed to insert run into database: {:#}", e);
+        }
     }
 
     if discovered_count > 0 {

@@ -29,7 +29,7 @@ fn default_install_dir() -> PathBuf {
 }
 
 fn default_output_dir() -> PathBuf {
-    PathBuf::from("./daemon_runs")
+    PathBuf::from("./src_runs")
 }
 
 fn default_poll_interval_seconds() -> u64 {

@@ -11,7 +11,7 @@ use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileMeta, FileService};
 
 use anyhow::Result;
-use log::{error, info};
+use log::{debug, error, info};
 use tempfile::NamedTempFile;
 
 pub struct DownloadedFile {
@@ -29,6 +29,9 @@ pub enum DownloadError {
 
     #[error("Service error (retryable): {0}")]
     ServiceError(anyhow::Error),
+
+    #[error("File not accessible: {0}")]
+    FileNotAccessible(String),
 
     /// Considered fatal
     #[error("Other error: {0}")]
@@ -139,6 +142,7 @@ impl FileDownloader {
             .await
             .map_err(DownloadError::ServiceError)?;
 
+        debug!("File info: {file_info:?}");
         info!("Running initial checks");
         security::validate_file_info(&file_info, &self.security_config)
             .map_err(DownloadError::SecurityError)?;
@@ -171,6 +175,7 @@ impl FileDownloader {
         services: &'a mut [DynFileService],
         input: &str,
     ) -> Result<Box<dyn FileDownloadHandle + 'a>, DownloadError> {
+        debug!("Input is: {}", input);
         services
             .iter_mut()
             .find_map(|service| service.detect_link(input))

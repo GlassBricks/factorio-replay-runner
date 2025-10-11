@@ -1,11 +1,5 @@
-# Game and category IDs can be found in speedrun.com API:
-# - Game ID: https://www.speedrun.com/api/v1/games?name=Game+Name
-# - Categories: https://www.speedrun.com/api/v1/games/{game_id}/categories
-#
-# Format: games.<game_id>.categories.<category_id>
-
 games:
-  ldewr7ed:  # Factorio: Space Age
+  ldewr7ed:
     name: "Factorio: Space Age"
     expected_mods:
       - base
@@ -13,12 +7,66 @@ games:
       - elevated-rails
       - space-age
     categories:
-      jdzmlwrk:  # Random Seed New Game+
+      n2yzwgmk:
+        name: "Any%"
+
+      7kjwx64d:
+        name: "Default Settings"
+
+      xk97qv6d:
+        name: "100%"
+        blueprint_import: true
+
+      jdzmlwrk:
         name: "Random Seed New Game+"
         blueprint_import: true
 
-  9d35xw1l:  # Factorio
+      z27jn1z2:
+        name: "Any% MP"
+        max_players: 8
+
+      zdn96892:
+        name: "Default Settings MP"
+        max_players: 8
+
+  9d35xw1l:
     name: "Factorio"
     expected_mods:
       - base
-    categories: {}
+    categories:
+      ndxjper2:
+        name: "Any%"
+        win_on_rocket_launch: true
+
+      7dg85xp2:
+        name: "Default Settings"
+        win_on_rocket_launch: true
+
+      wkpy7ljk:
+        name: "100%"
+        blueprint_import: true
+
+      7dggqegd:
+        name: "Steelaxe%"
+
+      wkpjq9wk:
+        name: "Any% MP"
+        win_on_rocket_launch: true
+        max_players: 8
+
+      9kvxm882:
+        name: "Default Settings MP"
+        win_on_rocket_launch: true
+        max_players: 8
+
+      wdmw3542:
+        name: "Getting on track like a pro"
+
+      9kv7oeek:
+        name: "Any% Duo"
+        win_on_rocket_launch: true
+        max_players: 2
+
+      mke9y0nd:
+        name: "Massive Multiplayer"
+        max_players: null

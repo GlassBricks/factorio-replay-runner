@@ -1,0 +1,22 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "label": "run-src",
+    "adapter": "CodeLLDB",
+    "build": {
+      "command": "cargo",
+      "args": ["build", "-p", "cli"]
+    },
+    "program": "$ZED_WORKTREE_ROOT/target/debug/cli",
+    "args": ["run-src"],
+    "env": {
+      "RUST_LOG": "debug",
+      "AUTO_DOWNLOAD_RUNS": "1"
+    },
+    "request": "launch",
+    "sourceLanguages": ["rust"]
+  }
+]
