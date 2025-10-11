@@ -202,7 +202,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_get_file_info() {
-        let mut service = SpeedrunService::new();
+        let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
         let file_info = service.get_file_info(&file_id).await.unwrap();
@@ -215,7 +215,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_download() {
-        let mut service = SpeedrunService::new();
+        let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
         let temp_file = NamedTempFile::new().unwrap();
@@ -231,7 +231,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_file_info_and_download_integration() {
-        let mut service = SpeedrunService::new();
+        let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
         // Test file info
@@ -252,7 +252,7 @@ mod tests {
     async fn test_file_downloader_integration() {
         use crate::FileDownloader;
 
-        let service = SpeedrunService::new();
+        let service = SpeedrunService;
         let mut downloader = FileDownloader::builder().add_service(service).build();
 
         match downloader.download_zip_to_temp(TEST_URL).await {

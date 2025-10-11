@@ -11,12 +11,12 @@ pub struct DaemonConfig {
     pub cutoff_date: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SrcRunRules {
     pub games: HashMap<String, GameConfig>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameConfig {
     #[serde(default)]
@@ -25,7 +25,7 @@ pub struct GameConfig {
     pub categories: HashMap<String, CategoryConfig>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct CategoryConfig {
     #[serde(default)]
     pub name: Option<String>,
@@ -33,7 +33,7 @@ pub struct CategoryConfig {
     pub run_rules: RunRules,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunRules {
     #[serde(rename = "expected_mods")]

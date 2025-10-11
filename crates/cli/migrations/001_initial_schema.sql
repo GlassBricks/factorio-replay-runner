@@ -3,11 +3,9 @@ CREATE TABLE runs (
     run_id TEXT PRIMARY KEY NOT NULL,
     game_id TEXT NOT NULL,
     category_id TEXT NOT NULL,
-    runner_name TEXT,
     submitted_date TEXT NOT NULL,
     status TEXT NOT NULL,
     error_message TEXT,
-    verification_status TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

@@ -5,7 +5,7 @@ use factorio_manager::{
     process_manager::setup_signal_handlers,
     save_file::{SaveFile, WrittenSaveFile},
 };
-use config::{RunRules, SrcRunRules};
+use config::{DaemonConfig, RunRules, SrcRunRules};
 use run_replay::{ReplayReport, run_replay};
 use src_integration::run_replay_from_src_run;
 use std::{
@@ -18,6 +18,7 @@ use zip_downloader::{
 };
 
 mod config;
+mod daemon;
 mod database;
 mod run_lookup;
 mod run_replay;
@@ -35,6 +36,7 @@ struct CliArgs {
 enum Commands {
     Run(RunReplayOnFileArgs),
     RunSrc(RunReplayFromSrcArgs),
+    Daemon(DaemonArgs),
 }
 
 #[derive(Args)]
@@ -77,21 +79,54 @@ struct RunReplayFromSrcArgs {
     output_dir: PathBuf,
 }
 
+#[derive(Args)]
+struct DaemonArgs {
+    /// Game rules file (yaml)
+    #[arg(default_value = "./speedrun_rules.yaml")]
+    game_rules_file: PathBuf,
+
+    /// Factorio installations directory
+    #[arg(long, default_value = "./factorio_installs")]
+    install_dir: PathBuf,
+
+    /// Output directory for run processing
+    #[arg(short, long, default_value = "./daemon_runs")]
+    output_dir: PathBuf,
+
+    /// Poll interval in seconds for speedrun.com API
+    #[arg(long, default_value = "3600")]
+    poll_interval_seconds: u64,
+
+    /// SQLite database path
+    #[arg(long, default_value = "run_verification.db")]
+    database_path: PathBuf,
+
+    /// Cutoff date (RFC3339 format) - only process runs submitted after this date
+    #[arg(long)]
+    cutoff_date: String,
+}
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logger();
 
-    // Set up signal handlers for graceful shutdown
-    setup_signal_handlers().await?;
-
     let args = CliArgs::parse();
 
-    let exit_code = match args.command {
-        Commands::Run(sub_args) => cli_run_file(sub_args).await,
-        Commands::RunSrc(sub_args) => cli_run_src(sub_args).await,
-    }?;
-
-    std::process::exit(exit_code);
+    match args.command {
+        Commands::Run(sub_args) => {
+            setup_signal_handlers().await?;
+            let exit_code = cli_run_file(sub_args).await?;
+            std::process::exit(exit_code);
+        }
+        Commands::RunSrc(sub_args) => {
+            setup_signal_handlers().await?;
+            let exit_code = cli_run_src(sub_args).await?;
+            std::process::exit(exit_code);
+        }
+        Commands::Daemon(sub_args) => {
+            cli_daemon(sub_args).await?;
+            Ok(())
+        }
+    }
 }
 
 fn init_logger() {
@@ -158,6 +193,27 @@ async fn run_src(
     let rules = load_src_rules(game_rules_file).await?;
     let mut downloader = create_file_downloader().await?;
     run_replay_from_src_run(&mut downloader, run_id, &install_dir, &rules, output_dir).await
+}
+
+async fn cli_daemon(args: DaemonArgs) -> Result<i32> {
+    let DaemonArgs {
+        game_rules_file,
+        install_dir,
+        output_dir,
+        poll_interval_seconds,
+        database_path,
+        cutoff_date,
+    } = args;
+
+    let src_rules = load_src_rules(&game_rules_file).await?;
+    let daemon_config = DaemonConfig {
+        poll_interval_seconds,
+        database_path,
+        cutoff_date,
+    };
+
+    daemon::run_daemon(daemon_config, src_rules.games, install_dir, output_dir).await?;
+    Ok(0)
 }
 
 async fn create_file_downloader() -> Result<FileDownloader> {

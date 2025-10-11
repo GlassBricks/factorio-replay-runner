@@ -3,6 +3,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
 
+#[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
 }

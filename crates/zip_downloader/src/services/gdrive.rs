@@ -150,7 +150,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_get_file_info() {
-        let mut service = GoogleDriveService::new();
+        let mut service = GoogleDriveService;
         let file_info = service
             .get_file_info(&TEST_FILE_ID.to_string())
             .await
@@ -163,7 +163,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_download() {
-        let mut service = GoogleDriveService::new();
+        let mut service = GoogleDriveService;
         let temp_file = NamedTempFile::new().unwrap();
         service
             .download(&TEST_FILE_ID.to_string(), temp_file.path())
