@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::{fs::File, io::Write, path::Path};
 
 use anyhow::Result;
+use factorio_manager::factorio_install_dir::VersionStr;
 use factorio_manager::factorio_instance::{FactorioInstance, FactorioProcess};
 use factorio_manager::save_file::SaveFile;
 use factorio_manager::{
@@ -16,6 +17,8 @@ use log::{debug, info};
 use replay_script::{MsgLevel, ReplayMsg};
 
 use crate::config::RunRules;
+
+const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
 
 #[derive(Clone, Copy)]
 pub struct ReplayReport {
@@ -49,6 +52,14 @@ pub async fn run_replay(
 
     let version = save_file.get_factorio_version()?;
     info!("Save version: {}", version);
+
+    (version >= MIN_FACTORIO_VERSION).then_some(()).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Factorio version {} is not supported. Minimum version required: {} (critical bug fixed)",
+            version,
+            MIN_FACTORIO_VERSION
+        )
+    })?;
 
     let mut instance = get_instance(install_dir, save_file).await?;
     perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
