@@ -1,27 +1,3 @@
-# Daemon Configuration
-# This file configures the behavior of the daemon that polls speedrun.com
-# and automatically processes verified runs.
+poll_interval_seconds: 900
 
-# Game rules file - defines which games/categories to monitor and validation rules
-game_rules_file: ./speedrun_rules.yaml
-
-# Factorio installations directory
-# The daemon will download and cache Factorio versions here
-install_dir: ./factorio_installs
-
-# Output directory for processed runs
-# Each run will be stored in {output_dir}/{run_id}/
-output_dir: ./daemon_runs
-
-# Poll interval in seconds
-# How often to check speedrun.com for new verified runs
-poll_interval_seconds: 3600  # 1 hour
-
-# SQLite database path
-# Tracks run status (discovered, processing, passed, failed, etc.)
-database_path: run_verification.db
-
-# Cutoff date (RFC3339 format)
-# Only process runs submitted after this date
-# This prevents processing old runs on first startup
-cutoff_date: "2024-01-01T00:00:00Z"
+cutoff_date: "2025-05-01T00:00:00Z"
