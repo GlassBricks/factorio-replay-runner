@@ -76,7 +76,6 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
         return Ok(FileMeta {
             name: name.clone(),
             size: 0,
-            is_zip: name.to_lowercase().ends_with(".zip"),
         });
     }
 
@@ -106,15 +105,7 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
         .and_then(|line| line.split(':').nth(1).and_then(|s| s.trim().parse().ok()))
         .unwrap_or(0);
 
-    let content_type = headers
-        .lines()
-        .find(|line| line.to_lowercase().starts_with("content-type:"))
-        .map(|line| line.to_lowercase())
-        .unwrap_or_default();
-
-    let is_zip = content_type.contains("zip") || name.to_lowercase().ends_with(".zip");
-
-    Ok(FileMeta { name, size, is_zip })
+    Ok(FileMeta { name, size })
 }
 
 async fn download_file(file_id: &SpeedrunFileId, dest: &Path) -> Result<()> {
@@ -207,7 +198,6 @@ mod tests {
 
         let file_info = service.get_file_info(&file_id).await.unwrap();
         assert!(file_info.name.ends_with(".zip"));
-        assert!(file_info.is_zip);
         // Name might be from Content-Disposition header or URL
         assert!(file_info.name.contains("Steelaxe") || file_info.name == "1d4e2.zip");
     }
@@ -235,8 +225,7 @@ mod tests {
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
         // Test file info
-        let file_info = service.get_file_info(&file_id).await.unwrap();
-        assert!(file_info.is_zip);
+        let _ = service.get_file_info(&file_id).await.unwrap();
 
         // Test download
         let temp_file = NamedTempFile::new().unwrap();

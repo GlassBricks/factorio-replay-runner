@@ -225,7 +225,6 @@ mod tests {
         let valid_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 1000,
-            is_zip: true,
         };
 
         assert!(security::validate_file_info(&valid_file_info, &security_config).is_ok());
@@ -233,7 +232,6 @@ mod tests {
         let too_large_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 200 * 1024 * 1024, // Larger than default 100MB limit
-            is_zip: true,
         };
 
         let result = security::validate_file_info(&too_large_file_info, &security_config);

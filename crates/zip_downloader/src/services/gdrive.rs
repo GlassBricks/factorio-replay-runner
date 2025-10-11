@@ -41,14 +41,7 @@ async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMe
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    let content_type = headers.get("content-type").and_then(|v| v.to_str().ok());
-
-    let is_zip = content_type
-        .map(|s| s.to_lowercase().contains("zip"))
-        .unwrap_or(false)
-        || name.to_lowercase().ends_with(".zip");
-
-    Ok(FileMeta { name, size, is_zip })
+    Ok(FileMeta { name, size })
 }
 
 async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<()> {
@@ -157,7 +150,6 @@ mod tests {
             .unwrap();
         assert_eq!(file_info.name, "foo.zip");
         assert_eq!(file_info.size, 119);
-        assert!(file_info.is_zip);
     }
 
     #[tokio::test]

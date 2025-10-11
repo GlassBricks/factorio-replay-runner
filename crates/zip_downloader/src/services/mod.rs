@@ -11,7 +11,6 @@ pub mod speedrun;
 pub struct FileMeta {
     pub name: String,
     pub size: u64,
-    pub is_zip: bool,
 }
 
 #[async_trait]
@@ -100,7 +99,6 @@ pub mod test_util {
             Ok(FileMeta {
                 name: "test.zip".to_string(),
                 size: 1000,
-                is_zip: true,
             })
         }
 

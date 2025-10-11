@@ -69,9 +69,7 @@ async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    let is_zip = name.to_lowercase().ends_with(".zip");
-
-    Ok(FileMeta { name, size, is_zip })
+    Ok(FileMeta { name, size })
 }
 
 async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<()> {
@@ -175,7 +173,6 @@ mod tests {
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         assert_eq!(file_info.name, "foo.zip");
         assert_eq!(file_info.size, 119);
-        assert!(file_info.is_zip);
         Ok(())
     }
 

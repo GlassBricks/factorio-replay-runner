@@ -380,7 +380,6 @@ mod tests {
         let large_file_info = FileMeta {
             name: "test.zip".to_string(),
             size: 200,
-            is_zip: true,
         };
 
         let result = validate_file_info(&large_file_info, &config);
