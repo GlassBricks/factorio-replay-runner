@@ -7,9 +7,37 @@ use std::{collections::HashMap, path::PathBuf};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
+    #[serde(default = "default_game_rules_file")]
+    pub game_rules_file: PathBuf,
+    #[serde(default = "default_install_dir")]
+    pub install_dir: PathBuf,
+    #[serde(default = "default_output_dir")]
+    pub output_dir: PathBuf,
+    #[serde(default = "default_poll_interval_seconds")]
     pub poll_interval_seconds: u64,
+    #[serde(default = "default_database_path")]
     pub database_path: PathBuf,
     pub cutoff_date: String,
+}
+
+fn default_game_rules_file() -> PathBuf {
+    PathBuf::from("./speedrun_rules.yaml")
+}
+
+fn default_install_dir() -> PathBuf {
+    PathBuf::from("./factorio_installs")
+}
+
+fn default_output_dir() -> PathBuf {
+    PathBuf::from("./daemon_runs")
+}
+
+fn default_poll_interval_seconds() -> u64 {
+    3600
+}
+
+fn default_database_path() -> PathBuf {
+    PathBuf::from("run_verification.db")
 }
 
 #[derive(Clone, Deserialize, Serialize)]

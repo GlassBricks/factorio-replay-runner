@@ -122,6 +122,9 @@ mod tests {
         let db = Database::in_memory().await.unwrap();
         let game_configs = HashMap::new();
         let config = DaemonConfig {
+            game_rules_file: std::path::PathBuf::from("./speedrun_rules.yaml"),
+            install_dir: std::path::PathBuf::from("./factorio_installs"),
+            output_dir: std::path::PathBuf::from("./daemon_runs"),
             poll_interval_seconds: 3600,
             database_path: std::path::PathBuf::from(":memory:"),
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),

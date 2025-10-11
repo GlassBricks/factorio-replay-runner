@@ -80,29 +80,9 @@ struct RunReplayFromSrcArgs {
 
 #[derive(Args)]
 struct DaemonArgs {
-    /// Game rules file (yaml)
-    #[arg(default_value = "./speedrun_rules.yaml")]
-    game_rules_file: PathBuf,
-
-    /// Factorio installations directory
-    #[arg(long, default_value = "./factorio_installs")]
-    install_dir: PathBuf,
-
-    /// Output directory for run processing
-    #[arg(short, long, default_value = "./daemon_runs")]
-    output_dir: PathBuf,
-
-    /// Poll interval in seconds for speedrun.com API
-    #[arg(long, default_value = "3600")]
-    poll_interval_seconds: u64,
-
-    /// SQLite database path
-    #[arg(long, default_value = "run_verification.db")]
-    database_path: PathBuf,
-
-    /// Cutoff date (RFC3339 format) - only process runs submitted after this date
-    #[arg(long)]
-    cutoff_date: String,
+    /// Daemon configuration file (yaml)
+    #[arg(short, long, default_value = "./daemon.yaml")]
+    config_file: PathBuf,
 }
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -210,30 +190,12 @@ async fn run_src(
 }
 
 async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {
-    let DaemonArgs {
-        game_rules_file,
-        install_dir,
-        output_dir,
-        poll_interval_seconds,
-        database_path,
-        cutoff_date,
-    } = args;
+    let DaemonArgs { config_file } = args;
 
-    let src_rules = load_src_rules(&game_rules_file).await?;
-    let daemon_config = DaemonConfig {
-        poll_interval_seconds,
-        database_path,
-        cutoff_date,
-    };
+    let daemon_config = load_daemon_config(&config_file).await?;
+    let src_rules = load_src_rules(&daemon_config.game_rules_file).await?;
 
-    daemon::run_daemon(
-        daemon_config,
-        src_rules.games,
-        install_dir,
-        output_dir,
-        coordinator,
-    )
-    .await?;
+    daemon::run_daemon(daemon_config, src_rules.games, coordinator).await?;
     Ok(0)
 }
 
@@ -260,6 +222,11 @@ async fn load_run_rules(rules_file_path: &Path) -> Result<RunRules> {
 async fn load_src_rules(game_rules_file_path: &Path) -> Result<SrcRunRules> {
     serde_yaml::from_reader(File::open(game_rules_file_path)?)
         .with_context(|| "failed to load src rules")
+}
+
+async fn load_daemon_config(config_file_path: &Path) -> Result<DaemonConfig> {
+    serde_yaml::from_reader(File::open(config_file_path)?)
+        .with_context(|| "failed to load daemon config")
 }
 
 fn result_to_exit_code<T>(result: &Result<ReplayReport, T>) -> i32 {

@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use factorio_manager::shutdown::ShutdownCoordinator;
 use log::info;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
@@ -18,8 +17,6 @@ pub use processor::process_runs_loop;
 pub async fn run_daemon(
     config: DaemonConfig,
     game_configs: HashMap<String, GameConfig>,
-    install_dir: PathBuf,
-    output_dir: PathBuf,
     coordinator: ShutdownCoordinator,
 ) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
@@ -29,8 +26,8 @@ pub async fn run_daemon(
         .await
         .context("Failed to initialize database")?;
 
-    std::fs::create_dir_all(&install_dir)?;
-    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(&config.install_dir)?;
+    std::fs::create_dir_all(&config.output_dir)?;
 
     let work_notify = Arc::new(Notify::new());
 
@@ -47,8 +44,8 @@ pub async fn run_daemon(
     let processor_task = process_runs_loop(
         db,
         game_configs,
-        install_dir,
-        output_dir,
+        config.install_dir.clone(),
+        config.output_dir.clone(),
         work_notify,
         coordinator.subscribe(),
     );
