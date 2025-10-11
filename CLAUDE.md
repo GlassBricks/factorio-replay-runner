@@ -82,3 +82,15 @@ After modifying replay scripts in `crates/replay_script/tstl_src/rules/`,
 
 - **`.env`**: Environment variables (OAuth tokens, API keys) - required for download services
 - **`speedrun_rules.yaml`**: Game/category rules for speedrun.com integration
+
+## Git Commit Guidelines
+
+- **Subject line**: Imperative mood, 50 chars max, capitalized, no period
+  - `feat`: New feature
+  - `fix`: Bug fix
+  - `refactor`: Code restructuring
+  - `test`: Test changes
+  - `docs`: Documentation
+  - `chore`: Maintenance tasks
+- **Body**: Explain why, not what (optional)
+- **One logical change per commit**: Keep commits focused and atomic
