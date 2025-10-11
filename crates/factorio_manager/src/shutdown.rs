@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
 use tokio::sync::watch;
 
 use crate::process_manager::ProcessManager;
@@ -30,19 +33,30 @@ impl ShutdownCoordinator {
 
         let shutdown_tx = self.shutdown_tx.clone();
         let process_manager = self.process_manager.clone();
+        let sigint_count = Arc::new(AtomicU8::new(0));
 
         tokio::spawn(async move {
-            tokio::select! {
-                _ = sigint.recv() => {
-                    log::info!("Received SIGINT, cleaning up processes...");
-                }
-                _ = sigterm.recv() => {
-                    log::info!("Received SIGTERM, cleaning up processes...");
+            loop {
+                tokio::select! {
+                    _ = sigint.recv() => {
+                        let count = sigint_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        if count == 1 {
+                            log::info!("Received SIGINT, cleaning up processes... (press ctrl-c again to force quit)");
+                            process_manager.kill_all();
+                            let _ = shutdown_tx.send(true);
+                        } else {
+                            log::warn!("Received SIGINT again, force quitting...");
+                            std::process::exit(130);
+                        }
+                    }
+                    _ = sigterm.recv() => {
+                        log::info!("Received SIGTERM, cleaning up processes...");
+                        process_manager.kill_all();
+                        let _ = shutdown_tx.send(true);
+                        break;
+                    }
                 }
             }
-
-            process_manager.kill_all();
-            let _ = shutdown_tx.send(true);
         });
 
         Ok(())
