@@ -53,13 +53,12 @@ pub async fn run_replay(
     let version = save_file.get_factorio_version()?;
     info!("Save version: {}", version);
 
-    (version >= MIN_FACTORIO_VERSION).then_some(()).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Factorio version {} is not supported. Minimum version required: {} (critical bug fixed)",
-            version,
-            MIN_FACTORIO_VERSION
-        )
-    })?;
+    anyhow::ensure!(
+        version >= MIN_FACTORIO_VERSION,
+        "Factorio version {} is not supported. Minimum version required: {} (critical bug fixed)",
+        version,
+        MIN_FACTORIO_VERSION
+    );
 
     let mut instance = get_instance(install_dir, save_file).await?;
     perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
