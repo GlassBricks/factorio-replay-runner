@@ -6,6 +6,9 @@ CREATE TABLE runs (
     submitted_date TEXT NOT NULL,
     status TEXT NOT NULL,
     error_message TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    error_class TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -13,3 +16,4 @@ CREATE TABLE runs (
 CREATE INDEX idx_runs_status ON runs(status);
 CREATE INDEX idx_runs_game_category ON runs(game_id, category_id);
 CREATE INDEX idx_runs_submitted_date ON runs(game_id, category_id, submitted_date DESC);
+CREATE INDEX idx_runs_retry ON runs(next_retry_at) WHERE next_retry_at IS NOT NULL;

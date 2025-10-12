@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT run_id, game_id, category_id,\n                   submitted_date as \"submitted_date: chrono::DateTime<Utc>\",\n                   status as \"status: RunStatus\",\n                   error_message,\n                   retry_count as \"retry_count: u32\",\n                   next_retry_at as \"next_retry_at: chrono::DateTime<Utc>\",\n                   error_class,\n                   created_at as \"created_at: chrono::DateTime<Utc>\",\n                   updated_at as \"updated_at: chrono::DateTime<Utc>\"\n            FROM runs\n            WHERE run_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "submitted_date: chrono::DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "status: RunStatus",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "retry_count: u32",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "next_retry_at: chrono::DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_class",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at: chrono::DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: chrono::DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "3a2c117c20e876d2f205bf54e927f4a9549468e6ed61ca48cf555520882c937f"
+}

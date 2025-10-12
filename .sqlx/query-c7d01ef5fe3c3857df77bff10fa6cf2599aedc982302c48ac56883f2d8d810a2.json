@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO runs (\n                run_id, game_id, category_id, submitted_date,\n                status, error_message, retry_count, next_retry_at, error_class,\n                created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "c7d01ef5fe3c3857df77bff10fa6cf2599aedc982302c48ac56883f2d8d810a2"
+}

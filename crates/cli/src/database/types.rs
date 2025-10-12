@@ -21,6 +21,9 @@ pub struct Run {
     pub submitted_date: DateTime<Utc>,
     pub status: RunStatus,
     pub error_message: Option<String>,
+    pub retry_count: u32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    pub error_class: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

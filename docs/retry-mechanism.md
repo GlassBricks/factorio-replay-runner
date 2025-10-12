@@ -204,10 +204,10 @@ Since the system hasn't been deployed yet:
 
 ## Implementation Checklist
 
-- [ ] Phase 1: Database schema update
-  - [ ] Update `001_initial.sql` with retry fields
-  - [ ] Update `Run` struct with new fields
-  - [ ] Update all database queries
+- [x] Phase 1: Database schema update
+  - [x] Update `001_initial_schema.sql` with retry fields
+  - [x] Update `Run` struct with new fields
+  - [x] Update all database queries
 - [ ] Phase 2: Retry configuration
   - [ ] Create `cli/src/retry.rs`
   - [ ] Implement `RetryConfig`

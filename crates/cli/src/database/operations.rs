@@ -13,19 +13,22 @@ impl Database {
     pub async fn insert_run(&self, new_run: NewRun) -> Result<()> {
         let now = Utc::now();
         let status = RunStatus::Discovered;
+        let retry_count: u32 = 0;
 
         sqlx::query!(
             r#"
             INSERT INTO runs (
                 run_id, game_id, category_id, submitted_date,
-                status, error_message, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                status, error_message, retry_count, next_retry_at, error_class,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?)
             "#,
             new_run.run_id,
             new_run.game_id,
             new_run.category_id,
             new_run.submitted_date,
             status,
+            retry_count,
             now,
             now
         )
@@ -94,6 +97,9 @@ impl Database {
                    submitted_date as "submitted_date: chrono::DateTime<Utc>",
                    status as "status: RunStatus",
                    error_message,
+                   retry_count as "retry_count: u32",
+                   next_retry_at as "next_retry_at: chrono::DateTime<Utc>",
+                   error_class,
                    created_at as "created_at: chrono::DateTime<Utc>",
                    updated_at as "updated_at: chrono::DateTime<Utc>"
             FROM runs
@@ -125,7 +131,8 @@ impl Database {
         let query_str = format!(
             r#"
             SELECT run_id, game_id, category_id, submitted_date, status,
-                   error_message, created_at, updated_at
+                   error_message, retry_count, next_retry_at, error_class,
+                   created_at, updated_at
             FROM runs
             WHERE status = ? AND ({})
             ORDER BY submitted_date ASC
@@ -150,6 +157,9 @@ impl Database {
                 submitted_date: r.try_get("submitted_date")?,
                 status: r.try_get("status")?,
                 error_message: r.try_get("error_message")?,
+                retry_count: r.try_get("retry_count")?,
+                next_retry_at: r.try_get("next_retry_at")?,
+                error_class: r.try_get("error_class")?,
                 created_at: r.try_get("created_at")?,
                 updated_at: r.try_get("updated_at")?,
             })
@@ -225,6 +235,9 @@ mod tests {
         assert_eq!(run.game_id, "game_id_1");
         assert_eq!(run.category_id, "cat_id_1");
         assert_eq!(run.status, RunStatus::Discovered);
+        assert_eq!(run.retry_count, 0);
+        assert_eq!(run.next_retry_at, None);
+        assert_eq!(run.error_class, None);
     }
 
     #[tokio::test]
@@ -330,5 +343,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(other_category, None);
+    }
+
+    #[tokio::test]
+    async fn test_retry_fields_initialized_correctly() {
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_retry_test", "game1", "cat1", submitted_date);
+
+        db.insert_run(new_run).await.unwrap();
+
+        let run = db.get_run("run_retry_test").await.unwrap().unwrap();
+        assert_eq!(run.retry_count, 0);
+        assert_eq!(run.next_retry_at, None);
+        assert_eq!(run.error_class, None);
+    }
+
+    #[tokio::test]
+    async fn test_retry_fields_persist_across_status_changes() {
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_persist_test", "game1", "cat1", submitted_date);
+
+        db.insert_run(new_run).await.unwrap();
+
+        db.mark_run_processing("run_persist_test").await.unwrap();
+        let run = db.get_run("run_persist_test").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Processing);
+        assert_eq!(run.retry_count, 0);
+        assert_eq!(run.next_retry_at, None);
+
+        db.mark_run_passed("run_persist_test").await.unwrap();
+        let run = db.get_run("run_persist_test").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Passed);
+        assert_eq!(run.retry_count, 0);
+        assert_eq!(run.next_retry_at, None);
     }
 }
