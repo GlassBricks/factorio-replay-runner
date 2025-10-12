@@ -227,9 +227,8 @@ Since the system hasn't been deployed yet:
   - [x] Update `process_run` to pass `retry_config` to `process_replay_result`
   - [x] Add `retry_config` to `RunProcessingContext`
   - [x] Update all `RunProcessingContext` creation sites
-- [ ] Phase 5: Testing
-  - [ ] Integration tests
-  - [ ] Database tests
+- [x] Phase 5: Testing
+  - [x] Integration tests (end-to-end retry workflow, permanent failure, rate-limited scheduling)
+  - [x] Database tests (ordering, category filtering, retry state persistence)
 - [x] Phase 6: Observability
   - [x] Add retry logging (logging added in `process_replay_result`)
-  - [ ] Update CLAUDE.md

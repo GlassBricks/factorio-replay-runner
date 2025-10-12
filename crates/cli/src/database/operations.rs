@@ -759,4 +759,229 @@ mod tests {
         assert_eq!(run.next_retry_at, None);
         assert_eq!(run.error_class, None);
     }
+
+    #[tokio::test]
+    async fn test_retry_workflow_end_to_end() {
+        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::retry::RetryConfig;
+        use replay_script::MsgLevel;
+
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_e2e", "game1", "cat1", submitted_date);
+        db.insert_run(new_run).await.unwrap();
+
+        let error = ClassifiedError {
+            class: ErrorClass::Retryable,
+            message: "Temporary failure".to_string(),
+        };
+        let config = RetryConfig::default();
+
+        db.process_replay_result("run_e2e", Err(error), &config)
+            .await
+            .unwrap();
+
+        let run = db.get_run("run_e2e").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Error);
+        assert_eq!(run.retry_count, 1);
+        assert!(run.next_retry_at.is_some());
+        assert_eq!(run.error_class, Some("retryable".to_string()));
+
+        let allowed = vec![("game1".to_string(), "cat1".to_string())];
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap();
+        assert!(next_run.is_none());
+
+        let past_time = Utc::now() - chrono::Duration::hours(1);
+        db.schedule_retry("run_e2e", 1, "retryable", past_time)
+            .await
+            .unwrap();
+
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_e2e");
+
+        let report = ReplayReport {
+            max_msg_level: MsgLevel::Info,
+        };
+        db.process_replay_result("run_e2e", Ok(report), &config)
+            .await
+            .unwrap();
+
+        let run = db.get_run("run_e2e").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Passed);
+        assert_eq!(run.retry_count, 0);
+        assert_eq!(run.next_retry_at, None);
+        assert_eq!(run.error_class, None);
+    }
+
+    #[tokio::test]
+    async fn test_permanent_failure_after_max_attempts() {
+        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::retry::RetryConfig;
+
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_max_attempts", "game1", "cat1", submitted_date);
+        db.insert_run(new_run).await.unwrap();
+
+        let config = RetryConfig::default();
+        let max_attempts = config.max_attempts;
+
+        for attempt in 0..max_attempts {
+            let run = db.get_run("run_max_attempts").await.unwrap().unwrap();
+            assert_eq!(run.retry_count, attempt);
+
+            let error = ClassifiedError {
+                class: ErrorClass::Retryable,
+                message: format!("Failure attempt {}", attempt + 1),
+            };
+
+            db.process_replay_result("run_max_attempts", Err(error), &config)
+                .await
+                .unwrap();
+
+            let run = db.get_run("run_max_attempts").await.unwrap().unwrap();
+
+            if attempt < max_attempts - 1 {
+                assert_eq!(run.retry_count, attempt + 1);
+                assert!(run.next_retry_at.is_some());
+            } else {
+                assert_eq!(run.retry_count, attempt);
+                assert_eq!(run.next_retry_at, None);
+            }
+        }
+
+        let run = db.get_run("run_max_attempts").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Error);
+        assert_eq!(run.retry_count, max_attempts - 1);
+        assert_eq!(run.next_retry_at, None);
+
+        let allowed = vec![("game1".to_string(), "cat1".to_string())];
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap();
+        assert!(next_run.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_rate_limited_retry_scheduling() {
+        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::retry::RetryConfig;
+        use std::time::Duration;
+
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_rate_limited", "game1", "cat1", submitted_date);
+        db.insert_run(new_run).await.unwrap();
+
+        let retry_after = Duration::from_secs(300);
+        let error = ClassifiedError {
+            class: ErrorClass::RateLimited {
+                retry_after: Some(retry_after),
+            },
+            message: "Rate limited".to_string(),
+        };
+        let config = RetryConfig::default();
+
+        db.process_replay_result("run_rate_limited", Err(error), &config)
+            .await
+            .unwrap();
+
+        let run = db.get_run("run_rate_limited").await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Error);
+        assert_eq!(run.retry_count, 1);
+        assert!(run.next_retry_at.is_some());
+        assert_eq!(run.error_class, Some("rate_limited".to_string()));
+
+        let expected_retry_at = Utc::now() + chrono::Duration::from_std(retry_after).unwrap();
+        let actual_retry_at = run.next_retry_at.unwrap();
+        let diff = (actual_retry_at - expected_retry_at).num_seconds().abs();
+        assert!(diff < 5);
+    }
+
+    #[tokio::test]
+    async fn test_get_next_run_to_process_category_filtering() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run_cat1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run_cat2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run_game2_cat1",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let allowed = vec![
+            ("game1".to_string(), "cat1".to_string()),
+            ("game2".to_string(), "cat1".to_string()),
+        ];
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_cat1");
+
+        db.mark_run_processing("run_cat1").await.unwrap();
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_game2_cat1");
+
+        db.mark_run_processing("run_game2_cat1").await.unwrap();
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap();
+        assert!(next_run.is_none());
+
+        let only_cat2 = vec![("game1".to_string(), "cat2".to_string())];
+        let next_run = db
+            .get_next_run_to_process(&only_cat2)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(next_run.run_id, "run_cat2");
+    }
+
+    #[tokio::test]
+    async fn test_retry_state_persistence() {
+        let db = Database::in_memory().await.unwrap();
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_persist", "game1", "cat1", submitted_date);
+        db.insert_run(new_run).await.unwrap();
+
+        let next_retry_at = "2024-01-02T00:00:00Z".parse().unwrap();
+        db.mark_run_error("run_persist", "test error")
+            .await
+            .unwrap();
+        db.schedule_retry("run_persist", 3, "retryable", next_retry_at)
+            .await
+            .unwrap();
+
+        let run = db.get_run("run_persist").await.unwrap().unwrap();
+        assert_eq!(run.retry_count, 3);
+        assert_eq!(run.next_retry_at, Some(next_retry_at));
+        assert_eq!(run.error_class, Some("retryable".to_string()));
+        assert_eq!(run.status, RunStatus::Error);
+
+        let new_retry_at = "2024-01-03T00:00:00Z".parse().unwrap();
+        db.schedule_retry("run_persist", 4, "rate_limited", new_retry_at)
+            .await
+            .unwrap();
+
+        let run = db.get_run("run_persist").await.unwrap().unwrap();
+        assert_eq!(run.retry_count, 4);
+        assert_eq!(run.next_retry_at, Some(new_retry_at));
+        assert_eq!(run.error_class, Some("rate_limited".to_string()));
+    }
 }
