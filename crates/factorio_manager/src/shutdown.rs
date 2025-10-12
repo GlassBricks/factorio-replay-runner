@@ -9,9 +9,7 @@ pub struct ShutdownCoordinator {
 
 impl ShutdownCoordinator {
     pub fn new(process_manager: Arc<ProcessManager>) -> Self {
-        Self {
-            process_manager,
-        }
+        Self { process_manager }
     }
 
     pub fn setup_handlers(&self) -> Result<()> {
@@ -25,18 +23,16 @@ impl ShutdownCoordinator {
         let process_manager = self.process_manager.clone();
 
         tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = sigint.recv() => {
-                        log::info!("Received SIGINT, shutting down...");
-                        process_manager.sig_int_all();
-                        std::process::exit(130);
-                    }
-                    _ = sigterm.recv() => {
-                        log::info!("Received SIGTERM, shutting down...");
-                        process_manager.sig_int_all();
-                        std::process::exit(143);
-                    }
+            tokio::select! {
+                _ = sigint.recv() => {
+                    log::info!("Received SIGINT, shutting down...");
+                    process_manager.sig_int_all();
+                    std::process::exit(130);
+                }
+                _ = sigterm.recv() => {
+                    log::info!("Received SIGTERM, shutting down...");
+                    process_manager.sig_int_all();
+                    std::process::exit(143);
                 }
             }
         });
