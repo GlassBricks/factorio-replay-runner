@@ -8,5 +8,4 @@
 /src_runs/
 /worktrees/
 .claude
-**/.sqlx
 run_verification.db*

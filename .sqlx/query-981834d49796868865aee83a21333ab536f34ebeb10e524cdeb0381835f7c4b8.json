@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT MAX(submitted_date) as \"latest: chrono::DateTime<Utc>\"\n            FROM runs\n            WHERE game_id = ? AND category_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "latest: chrono::DateTime<Utc>",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "981834d49796868865aee83a21333ab536f34ebeb10e524cdeb0381835f7c4b8"
+}

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT run_id, game_id, category_id,\n                   submitted_date as \"submitted_date: chrono::DateTime<Utc>\",\n                   status as \"status: RunStatus\",\n                   error_message,\n                   created_at as \"created_at: chrono::DateTime<Utc>\",\n                   updated_at as \"updated_at: chrono::DateTime<Utc>\"\n            FROM runs\n            WHERE status = ?\n            ORDER BY submitted_date ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "submitted_date: chrono::DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "status: RunStatus",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at: chrono::DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: chrono::DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "a278c9ac707daad1c7448252498951a41068fc828f811f6d71f6c097c077524b"
+}
