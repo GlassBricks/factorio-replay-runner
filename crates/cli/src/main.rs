@@ -97,9 +97,6 @@ async fn main() -> Result<()> {
 
     let args = CliArgs::parse();
 
-    let coordinator = ShutdownCoordinator::new(Arc::new((*GLOBAL_PROCESS_MANAGER).clone()));
-    coordinator.setup_handlers()?;
-
     match args.command {
         Commands::Run(sub_args) => {
             let exit_code = cli_run_file(sub_args).await?;
@@ -110,7 +107,7 @@ async fn main() -> Result<()> {
             std::process::exit(exit_code);
         }
         Commands::Daemon(sub_args) => {
-            cli_daemon(sub_args, coordinator).await?;
+            cli_daemon(sub_args).await?;
             Ok(())
         }
     }
@@ -281,13 +278,16 @@ async fn run_src_once(
     }
 }
 
-async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Result<i32> {
+async fn cli_daemon(args: DaemonArgs) -> Result<i32> {
     let DaemonArgs { config } = args;
 
     let daemon_config = load_daemon_config(&config).await?;
     let src_rules = load_src_rules(&daemon_config.game_rules_file).await?;
 
-    daemon::run_daemon(daemon_config, src_rules, coordinator).await?;
+    let coordinator = ShutdownCoordinator::new(Arc::new((*GLOBAL_PROCESS_MANAGER).clone()));
+    coordinator.setup_handlers()?;
+
+    daemon::run_daemon(daemon_config, src_rules).await?;
     Ok(0)
 }
 

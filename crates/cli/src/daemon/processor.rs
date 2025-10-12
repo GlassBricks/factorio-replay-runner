@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use log::{error, info};
 use std::sync::Arc;
-use tokio::sync::{Notify, watch};
+use tokio::sync::Notify;
 
 use crate::database::types::Run;
 use crate::run_processing::{RunProcessingContext, download_and_run_replay};
@@ -15,7 +15,6 @@ pub enum ProcessResult {
 pub async fn process_runs_loop(
     ctx: RunProcessingContext,
     work_notify: Arc<Notify>,
-    mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<()> {
     info!("Starting run processor (event-driven)");
 
@@ -27,18 +26,8 @@ pub async fn process_runs_loop(
             }
             Ok(ProcessResult::NoWork) => {
                 info!("No work available - run processor sleeping");
-
-                tokio::select! {
-                    _ = work_notify.notified() => {
-                        info!("Run processor woken - checking for work");
-                    }
-                    _ = shutdown_rx.changed() => {
-                        if *shutdown_rx.borrow() {
-                            info!("Run processor shutting down");
-                            return Ok(());
-                        }
-                    }
-                }
+                work_notify.notified().await;
+                info!("Run processor woken - checking for work");
             }
         }
     }

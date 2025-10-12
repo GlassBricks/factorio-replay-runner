@@ -1,24 +1,15 @@
 use anyhow::{Context, Result};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU8, Ordering},
-};
-use tokio::sync::watch;
+use std::sync::Arc;
 
 use crate::process_manager::ProcessManager;
 
 pub struct ShutdownCoordinator {
-    shutdown_tx: watch::Sender<bool>,
-    shutdown_rx: watch::Receiver<bool>,
     process_manager: Arc<ProcessManager>,
 }
 
 impl ShutdownCoordinator {
     pub fn new(process_manager: Arc<ProcessManager>) -> Self {
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
         Self {
-            shutdown_tx,
-            shutdown_rx,
             process_manager,
         }
     }
@@ -31,43 +22,26 @@ impl ShutdownCoordinator {
         let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
             .context("Failed to register SIGTERM handler")?;
 
-        let shutdown_tx = self.shutdown_tx.clone();
         let process_manager = self.process_manager.clone();
-        let sigint_count = Arc::new(AtomicU8::new(0));
 
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = sigint.recv() => {
-                        let count = sigint_count.fetch_add(1, Ordering::SeqCst) + 1;
-                        if count == 1 {
-                            log::info!("Received SIGINT, cleaning up processes... (press ctrl-c again to force quit)");
-                            process_manager.sig_int_all();
-                            let _ = shutdown_tx.send(true);
-                        } else {
-                            log::warn!("Received SIGINT again, force quitting...");
-                            std::process::exit(130);
-                        }
+                        log::info!("Received SIGINT, shutting down...");
+                        process_manager.sig_int_all();
+                        std::process::exit(130);
                     }
                     _ = sigterm.recv() => {
-                        log::info!("Received SIGTERM, cleaning up processes...");
+                        log::info!("Received SIGTERM, shutting down...");
                         process_manager.sig_int_all();
-                        let _ = shutdown_tx.send(true);
-                        break;
+                        std::process::exit(143);
                     }
                 }
             }
         });
 
         Ok(())
-    }
-
-    pub fn subscribe(&self) -> watch::Receiver<bool> {
-        self.shutdown_rx.clone()
-    }
-
-    pub fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(true);
     }
 }
 
