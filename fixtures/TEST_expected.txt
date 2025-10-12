@@ -4,4 +4,4 @@
 [Error]	       614	GlassBricks used map editor!
 [Error]	       866	GlassBricks ran disallowed command: /c game.print("hi")
 [Error]	      1122	GlassBricks used map editor!
-Replay exited successfully at tick 6460: First rocket launched
+VERIFICATION FAILED: win_on_scenario_finished enabled but scenario never completed
