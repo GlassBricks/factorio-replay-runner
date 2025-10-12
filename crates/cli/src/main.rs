@@ -266,7 +266,7 @@ async fn run_src_once(
 
     info!("Polling speedrun.com for new runs");
     let work_notify = Arc::new(tokio::sync::Notify::new());
-    daemon::poll_speedrun_com(&ctx, &daemon_config, &work_notify).await?;
+    daemon::poll_speedrun_com(&ctx, &daemon_config.polling, &work_notify).await?;
 
     info!("Processing one run from queue");
     match daemon::find_run_to_process(&ctx).await? {

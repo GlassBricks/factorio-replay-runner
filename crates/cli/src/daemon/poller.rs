@@ -4,12 +4,12 @@ use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::{Notify, watch};
 
-use crate::config::DaemonConfig;
+use crate::config::PollingConfig;
 use crate::run_processing::{RunProcessingContext, poll_game_category};
 
 pub async fn poll_speedrun_com_loop(
     ctx: RunProcessingContext,
-    config: DaemonConfig,
+    config: PollingConfig,
     work_notify: Arc<Notify>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -37,7 +37,7 @@ pub async fn poll_speedrun_com_loop(
 
 pub async fn poll_speedrun_com(
     ctx: &RunProcessingContext,
-    config: &DaemonConfig,
+    config: &PollingConfig,
     work_notify: &Notify,
 ) -> Result<()> {
     let cutoff_date = DateTime::parse_from_rfc3339(&config.cutoff_date)?.with_timezone(&Utc);
@@ -142,14 +142,9 @@ mod tests {
     #[tokio::test]
     async fn test_poll_with_no_game_configs() {
         let ctx = create_test_ctx().await;
-        let config = DaemonConfig {
-            game_rules_file: PathBuf::from("./speedrun_rules.yaml"),
-            install_dir: PathBuf::from("./factorio_installs"),
-            output_dir: PathBuf::from("./daemon_runs"),
+        let config = crate::config::PollingConfig {
             poll_interval_seconds: 3600,
-            database_path: PathBuf::from(":memory:"),
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),
-            retry: Default::default(),
         };
         let work_notify = Notify::new();
 

@@ -41,14 +41,14 @@ pub async fn run_daemon(
         db,
         speedrun_ops,
         src_rules,
-        install_dir: config.install_dir.clone(),
-        output_dir: config.output_dir.clone(),
-        retry_config: config.retry.clone(),
+        install_dir: config.install_dir,
+        output_dir: config.output_dir,
+        retry_config: config.retry,
     };
 
     let poller_task = poll_speedrun_com_loop(
         ctx.clone(),
-        config.clone(),
+        config.polling,
         work_notify.clone(),
         coordinator.subscribe(),
     );

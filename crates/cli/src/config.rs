@@ -6,6 +6,15 @@ use std::{collections::HashMap, path::PathBuf};
 
 use crate::retry::RetryConfig;
 
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PollingConfig {
+    #[serde(default = "default_poll_interval_seconds")]
+    pub poll_interval_seconds: u64,
+    #[serde(default)]
+    pub cutoff_date: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
@@ -15,11 +24,10 @@ pub struct DaemonConfig {
     pub install_dir: PathBuf,
     #[serde(default = "default_output_dir")]
     pub output_dir: PathBuf,
-    #[serde(default = "default_poll_interval_seconds")]
-    pub poll_interval_seconds: u64,
     #[serde(default = "default_database_path")]
     pub database_path: PathBuf,
-    pub cutoff_date: String,
+    #[serde(default)]
+    pub polling: PollingConfig,
     #[serde(default)]
     pub retry: RetryConfig,
 }
