@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use log::{error, info, warn};
 use replay_script::MsgLevel;
+use sqlx::Row;
 
 use crate::error::ClassifiedError;
 use crate::run_replay::ReplayReport;
@@ -110,32 +111,51 @@ impl Database {
         &self,
         allowed_game_categories: &[(String, String)],
     ) -> Result<Option<Run>> {
+        if allowed_game_categories.is_empty() {
+            return Ok(None);
+        }
+
         let status = RunStatus::Discovered;
-        let runs = sqlx::query_as!(
-            Run,
+        let conditions = allowed_game_categories
+            .iter()
+            .map(|_| "(game_id = ? AND category_id = ?)")
+            .collect::<Vec<_>>()
+            .join(" OR ");
+
+        let query_str = format!(
             r#"
-            SELECT run_id, game_id, category_id,
-                   submitted_date as "submitted_date: chrono::DateTime<Utc>",
-                   status as "status: RunStatus",
-                   error_message,
-                   created_at as "created_at: chrono::DateTime<Utc>",
-                   updated_at as "updated_at: chrono::DateTime<Utc>"
+            SELECT run_id, game_id, category_id, submitted_date, status,
+                   error_message, created_at, updated_at
             FROM runs
-            WHERE status = ?
+            WHERE status = ? AND ({})
             ORDER BY submitted_date ASC
+            LIMIT 1
             "#,
-            status
-        )
-        .fetch_all(self.pool())
-        .await?;
+            conditions
+        );
 
-        let run = runs.into_iter().find(|run| {
-            allowed_game_categories
-                .iter()
-                .any(|(game_id, cat_id)| run.game_id == *game_id && run.category_id == *cat_id)
-        });
+        let mut query = sqlx::query(&query_str).bind(status);
 
-        Ok(run)
+        for (game_id, cat_id) in allowed_game_categories {
+            query = query.bind(game_id).bind(cat_id);
+        }
+
+        let row = query.fetch_optional(self.pool()).await?;
+
+        row.map(|r| {
+            Ok::<_, sqlx::Error>(Run {
+                run_id: r.try_get("run_id")?,
+                game_id: r.try_get("game_id")?,
+                category_id: r.try_get("category_id")?,
+                submitted_date: r.try_get("submitted_date")?,
+                status: r.try_get("status")?,
+                error_message: r.try_get("error_message")?,
+                created_at: r.try_get("created_at")?,
+                updated_at: r.try_get("updated_at")?,
+            })
+        })
+        .transpose()
+        .map_err(Into::into)
     }
 
     pub async fn get_latest_submitted_date(
