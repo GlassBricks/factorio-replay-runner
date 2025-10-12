@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::run_processing::download_and_run_replay;
+use crate::run_processing::{RunProcessingContext, download_and_run_replay};
 
 mod config;
 mod daemon;
@@ -183,7 +183,7 @@ async fn run_src(
     output_dir: &Path,
     database: &Path,
 ) -> Result<ReplayReport> {
-    let rules = load_src_rules(game_rules).await?;
+    let src_rules = load_src_rules(game_rules).await?;
     let db = database::connection::Database::new(database).await?;
     let client = speedrun_api::SpeedrunClient::new()?;
     let speedrun_ops = speedrun_api::SpeedrunOps::new(&client);
@@ -196,10 +196,15 @@ async fn run_src(
         .format_game_category(&game_id, &category_id)
         .await;
     info!("Game: {}", game_category);
-    let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
 
-    let new_run =
-        database::types::NewRun::new(fetched_run_id.clone(), game_id, category_id, submitted_date);
+    let (run_rules, expected_mods) = src_rules.resolve_rules(&game_id, &category_id)?;
+
+    let new_run = database::types::NewRun::new(
+        fetched_run_id.clone(),
+        game_id.clone(),
+        category_id.clone(),
+        submitted_date,
+    );
     db.insert_run(new_run)
         .await
         .or_else(|e| {
@@ -247,21 +252,20 @@ async fn run_src_once(
     std::fs::create_dir_all(install_dir)?;
     std::fs::create_dir_all(output_dir)?;
 
+    let ctx = RunProcessingContext {
+        db,
+        speedrun_ops,
+        src_rules,
+        install_dir: install_dir.to_path_buf(),
+        output_dir: output_dir.to_path_buf(),
+    };
+
     info!("Polling speedrun.com for new runs");
     let work_notify = Arc::new(tokio::sync::Notify::new());
-    daemon::poll_speedrun_com(
-        &db,
-        &daemon_config,
-        &src_rules.games,
-        &speedrun_ops,
-        &work_notify,
-    )
-    .await?;
+    daemon::poll_speedrun_com(&ctx, &daemon_config, &work_notify).await?;
 
     info!("Processing one run from queue");
-    match daemon::find_run_to_process(&db, &src_rules.games, &client, install_dir, output_dir)
-        .await?
-    {
+    match daemon::find_run_to_process(&ctx).await? {
         daemon::ProcessResult::Processed => {
             info!("Successfully processed one run");
             Ok(0)
@@ -279,7 +283,7 @@ async fn cli_daemon(args: DaemonArgs, coordinator: ShutdownCoordinator) -> Resul
     let daemon_config = load_daemon_config(&config).await?;
     let src_rules = load_src_rules(&daemon_config.game_rules_file).await?;
 
-    daemon::run_daemon(daemon_config, src_rules.games, coordinator).await?;
+    daemon::run_daemon(daemon_config, src_rules, coordinator).await?;
     Ok(0)
 }
 

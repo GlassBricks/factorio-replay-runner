@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use factorio_manager::shutdown::ShutdownCoordinator;
 use log::info;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
-use crate::config::{DaemonConfig, GameConfig};
+use crate::config::{DaemonConfig, SrcRunRules};
 use crate::database::connection::Database;
+use crate::run_processing::RunProcessingContext;
 use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
 mod poller;
@@ -17,11 +17,11 @@ pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
 
 pub async fn run_daemon(
     config: DaemonConfig,
-    game_configs: HashMap<String, GameConfig>,
+    src_rules: SrcRunRules,
     coordinator: ShutdownCoordinator,
 ) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
-    info!("Monitoring {} game(s)", game_configs.len());
+    info!("Monitoring {} game(s)", src_rules.games.len());
 
     let db = Database::new(&config.database_path)
         .await
@@ -37,24 +37,21 @@ pub async fn run_daemon(
 
     info!("Daemon started successfully");
 
-    let poller_task = poll_speedrun_com_loop(
-        db.clone(),
-        config.clone(),
-        game_configs.clone(),
+    let ctx = RunProcessingContext {
+        db,
         speedrun_ops,
+        src_rules,
+        install_dir: config.install_dir.clone(),
+        output_dir: config.output_dir.clone(),
+    };
+
+    let poller_task = poll_speedrun_com_loop(
+        ctx.clone(),
+        config.clone(),
         work_notify.clone(),
         coordinator.subscribe(),
     );
-
-    let processor_task = process_runs_loop(
-        db,
-        game_configs,
-        client,
-        config.install_dir.clone(),
-        config.output_dir.clone(),
-        work_notify,
-        coordinator.subscribe(),
-    );
+    let processor_task = process_runs_loop(ctx, work_notify.clone(), coordinator.subscribe());
 
     let (poller_result, processor_result) = tokio::join!(poller_task, processor_task);
 

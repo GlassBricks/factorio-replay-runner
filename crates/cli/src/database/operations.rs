@@ -111,11 +111,6 @@ impl Database {
         allowed_game_categories: &[(String, String)],
     ) -> Result<Option<Run>> {
         let status = RunStatus::Discovered;
-
-        (!allowed_game_categories.is_empty())
-            .then_some(())
-            .ok_or_else(|| anyhow::anyhow!("No game/category configurations provided"))?;
-
         let runs = sqlx::query_as!(
             Run,
             r#"

@@ -8,20 +8,36 @@ use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
 use log::debug;
 use log::info;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use zip_downloader::FileDownloader;
 use zip_downloader::services::dropbox::DropboxService;
 use zip_downloader::services::gdrive::GoogleDriveService;
 use zip_downloader::services::speedrun::SpeedrunService;
 
-use crate::config::RunRules;
+use crate::config::{RunRules, SrcRunRules};
+use crate::database::connection::Database;
 use crate::database::types::NewRun;
 use crate::error::ClassifiedError;
 use crate::error::ErrorClass;
 use crate::run_replay::{ReplayReport, run_replay};
-use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient};
+use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
 
 const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
+
+#[derive(Clone)]
+pub struct RunProcessingContext {
+    pub db: Database,
+    pub speedrun_ops: SpeedrunOps,
+    pub src_rules: SrcRunRules,
+    pub install_dir: PathBuf,
+    pub output_dir: PathBuf,
+}
+
+impl RunProcessingContext {
+    pub fn client(&self) -> &SpeedrunClient {
+        &self.speedrun_ops.client
+    }
+}
 
 pub struct RunProcessor<'a> {
     downloader: FileDownloader,

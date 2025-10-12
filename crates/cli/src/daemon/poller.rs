@@ -1,20 +1,15 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use log::{error, info};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Notify, watch};
 
-use crate::config::{DaemonConfig, GameConfig};
-use crate::database::connection::Database;
-use crate::run_processing::poll_game_category;
-use crate::speedrun_api::SpeedrunOps;
+use crate::config::DaemonConfig;
+use crate::run_processing::{RunProcessingContext, poll_game_category};
 
 pub async fn poll_speedrun_com_loop(
-    db: Database,
+    ctx: RunProcessingContext,
     config: DaemonConfig,
-    game_configs: HashMap<String, GameConfig>,
-    speedrun_ops: SpeedrunOps,
     work_notify: Arc<Notify>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -26,9 +21,7 @@ pub async fn poll_speedrun_com_loop(
     );
 
     loop {
-        if let Err(e) =
-            poll_speedrun_com(&db, &config, &game_configs, &speedrun_ops, &work_notify).await
-        {
+        if let Err(e) = poll_speedrun_com(&ctx, &config, &work_notify).await {
             error!("Speedrun.com poll iteration failed: {:#}", e);
         }
 
@@ -43,27 +36,20 @@ pub async fn poll_speedrun_com_loop(
 }
 
 pub async fn poll_speedrun_com(
-    db: &Database,
+    ctx: &RunProcessingContext,
     config: &DaemonConfig,
-    game_configs: &HashMap<String, GameConfig>,
-    speedrun_ops: &SpeedrunOps,
     work_notify: &Notify,
 ) -> Result<()> {
     let cutoff_date = DateTime::parse_from_rfc3339(&config.cutoff_date)?.with_timezone(&Utc);
 
-    for (game_id, game_config) in game_configs {
+    for (game_id, game_config) in &ctx.src_rules.games {
         for category_id in game_config.categories.keys() {
-            if let Err(e) = poll_category(
-                db,
-                game_id,
-                category_id,
-                cutoff_date,
-                speedrun_ops,
-                work_notify,
-            )
-            .await
+            if let Err(e) = poll_category(ctx, game_id, category_id, cutoff_date, work_notify).await
             {
-                let game_category = speedrun_ops.format_game_category(game_id, category_id).await;
+                let game_category = ctx
+                    .speedrun_ops
+                    .format_game_category(game_id, category_id)
+                    .await;
                 error!("Failed to poll {}: {:#}", game_category, e);
             }
         }
@@ -73,32 +59,35 @@ pub async fn poll_speedrun_com(
 }
 
 async fn poll_category(
-    db: &Database,
+    ctx: &RunProcessingContext,
     game_id: &str,
     category_id: &str,
     cutoff_date: DateTime<Utc>,
-    speedrun_ops: &SpeedrunOps,
     work_notify: &Notify,
 ) -> Result<()> {
-    let latest_submitted_date = db
+    let latest_submitted_date = ctx
+        .db
         .get_latest_submitted_date(game_id, category_id)
         .await?
         .unwrap_or(cutoff_date);
 
-    let new_runs = poll_game_category(&speedrun_ops.client, game_id, category_id, &latest_submitted_date)
+    let new_runs = poll_game_category(ctx.client(), game_id, category_id, &latest_submitted_date)
         .await
         .context("Failed to poll game category from API")?;
 
     let discovered_count = new_runs.len();
 
     for new_run in &new_runs {
-        if let Err(e) = db.insert_run(new_run.clone()).await {
+        if let Err(e) = ctx.db.insert_run(new_run.clone()).await {
             error!("Failed to insert run into database: {:#}", e);
         }
     }
 
     if discovered_count > 0 {
-        let game_category = speedrun_ops.format_game_category(game_id, category_id).await;
+        let game_category = ctx
+            .speedrun_ops
+            .format_game_category(game_id, category_id)
+            .await;
         info!(
             "Discovered {} new run(s) for {}",
             discovered_count, game_category
@@ -130,25 +119,39 @@ mod tests {
     use super::*;
     use crate::database::connection::Database;
     use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    async fn create_test_ctx() -> RunProcessingContext {
+        let db = Database::in_memory().await.unwrap();
+        let client = SpeedrunClient::new().unwrap();
+        let speedrun_ops = SpeedrunOps::new(&client);
+        let src_rules = crate::config::SrcRunRules {
+            games: HashMap::new(),
+        };
+        RunProcessingContext {
+            db,
+            speedrun_ops,
+            src_rules,
+            install_dir: PathBuf::from("./factorio_installs"),
+            output_dir: PathBuf::from("./daemon_runs"),
+        }
+    }
 
     #[tokio::test]
     async fn test_poll_with_no_game_configs() {
-        let db = Database::in_memory().await.unwrap();
-        let game_configs = HashMap::new();
+        let ctx = create_test_ctx().await;
         let config = DaemonConfig {
-            game_rules_file: std::path::PathBuf::from("./speedrun_rules.yaml"),
-            install_dir: std::path::PathBuf::from("./factorio_installs"),
-            output_dir: std::path::PathBuf::from("./daemon_runs"),
+            game_rules_file: PathBuf::from("./speedrun_rules.yaml"),
+            install_dir: PathBuf::from("./factorio_installs"),
+            output_dir: PathBuf::from("./daemon_runs"),
             poll_interval_seconds: 3600,
-            database_path: std::path::PathBuf::from(":memory:"),
+            database_path: PathBuf::from(":memory:"),
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),
         };
         let work_notify = Notify::new();
-        let client = SpeedrunClient::new().unwrap();
-        let speedrun_ops = SpeedrunOps::new(&client);
 
-        let result =
-            poll_speedrun_com(&db, &config, &game_configs, &speedrun_ops, &work_notify).await;
+        let result = poll_speedrun_com(&ctx, &config, &work_notify).await;
 
         assert!(result.is_ok());
     }
