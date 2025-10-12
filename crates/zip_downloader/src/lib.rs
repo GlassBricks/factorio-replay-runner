@@ -24,24 +24,25 @@ pub enum DownloadError {
     #[error("No valid download link found in input")]
     NoLinkFound,
 
-    #[error("Security violation: {0}")]
-    SecurityError(anyhow::Error),
-
-    #[error("Service error (retryable): {0}")]
-    ServiceError(anyhow::Error),
-
     #[error("File not accessible: {0}")]
-    FileNotAccessible(String),
+    FileNotAccessible(#[source] anyhow::Error),
 
-    /// Considered fatal
-    #[error("Other error: {0}")]
-    Other(anyhow::Error),
-}
+    #[error("Service error: {0}")]
+    ServiceError(#[source] anyhow::Error),
 
-impl From<std::io::Error> for DownloadError {
-    fn from(err: std::io::Error) -> Self {
-        DownloadError::Other(err.into())
-    }
+    #[error("Security violation: {0}")]
+    SecurityViolation(#[source] anyhow::Error),
+
+    #[error("Rate limited: {message}")]
+    RateLimited {
+        retry_after: Option<std::time::Duration>,
+        message: String,
+        #[source]
+        source: anyhow::Error,
+    },
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 type DynFileService = Box<dyn FileServiceDyn>;
@@ -137,15 +138,12 @@ impl FileDownloader {
         info!("Found {download_handle}");
 
         info!("Getting file info");
-        let file_info = download_handle
-            .get_file_info()
-            .await
-            .map_err(DownloadError::ServiceError)?;
+        let file_info = download_handle.get_file_info().await?;
 
         debug!("File info: {file_info:?}");
         info!("Running initial checks");
         security::validate_file_info(&file_info, &self.security_config)
-            .map_err(DownloadError::SecurityError)?;
+            .map_err(DownloadError::SecurityViolation)?;
 
         info!("Downloading file");
 
@@ -155,15 +153,12 @@ impl FileDownloader {
             out_file.to_path_buf()
         };
 
-        download_handle
-            .download(&file_path)
-            .await
-            .map_err(DownloadError::ServiceError)?;
+        download_handle.download(&file_path).await?;
 
         info!("Running file checks");
         let mut reopened_file = File::open(&file_path)?;
         security::validate_downloaded_file(&mut reopened_file, &file_info, &self.security_config)
-            .map_err(DownloadError::SecurityError)?;
+            .map_err(DownloadError::SecurityViolation)?;
 
         Ok(DownloadedFile {
             name: file_info.name,

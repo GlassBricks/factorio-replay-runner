@@ -1,5 +1,5 @@
 use crate::services::{FileMeta, FileService};
-use anyhow::Result;
+use crate::DownloadError;
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -12,17 +12,26 @@ const DRIVE_PUBLIC_BASE: &str = "https://drive.google.com/uc?export=download&id"
 fn public_download_url(file_id: &str) -> String {
     format!("{}={}", DRIVE_PUBLIC_BASE, file_id)
 }
-async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMeta> {
+
+async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMeta, DownloadError> {
     get_file_info_from_headers(client, file_id).await
 }
 
-async fn get_file_info_from_headers(client: &reqwest::Client, file_id: &str) -> Result<FileMeta> {
+async fn get_file_info_from_headers(
+    client: &reqwest::Client,
+    file_id: &str,
+) -> Result<FileMeta, DownloadError> {
     let url = public_download_url(file_id);
 
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await.map_err(|e| {
+        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Google Drive"))
+    })?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to get file metadata: HTTP {}", response.status());
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "HTTP {} from Google Drive",
+            response.status()
+        )));
     }
 
     let headers = response.headers();
@@ -31,7 +40,9 @@ async fn get_file_info_from_headers(client: &reqwest::Client, file_id: &str) -> 
         && let Ok(ct) = content_type.to_str()
         && ct.contains("text/html")
     {
-        anyhow::bail!("File not accessible (authentication required or not publicly shared).");
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "File requires authentication or is not publicly shared"
+        )));
     }
     let name = headers
         .get("content-disposition")
@@ -54,33 +65,41 @@ async fn get_file_info_from_headers(client: &reqwest::Client, file_id: &str) -> 
     Ok(FileMeta { name, size })
 }
 
-async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<()> {
+async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), DownloadError> {
     let client = reqwest::Client::new();
     let url = public_download_url(file_id);
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await.map_err(|e| {
+        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Google Drive"))
+    })?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to download file: HTTP {}", response.status());
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "HTTP {} from Google Drive",
+            response.status()
+        )));
     }
 
     if let Some(content_type) = response.headers().get("content-type")
         && let Ok(ct) = content_type.to_str()
         && ct.contains("text/html")
     {
-        anyhow::bail!(
-            "File not accessible (authentication required or not publicly shared). \
-                     Please ensure the file is publicly accessible or provide a GOOGLE_DRIVE_API_KEY"
-        );
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "File requires authentication or is not publicly shared. \
+             Please ensure the file is publicly accessible"
+        )));
     }
 
-    let mut file = tokio::fs::File::create(dest).await?;
+    let mut file = tokio::fs::File::create(dest).await.map_err(DownloadError::IoError)?;
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+        let bytes = chunk.map_err(|e| {
+            DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to read response stream"))
+        })?;
+        file.write_all(&bytes).await.map_err(DownloadError::IoError)?;
     }
 
-    file.flush().await?;
+    file.flush().await.map_err(DownloadError::IoError)?;
 
     Ok(())
 }
@@ -123,12 +142,12 @@ impl FileService for GoogleDriveService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
         let client = reqwest::Client::new();
         get_file_info(&client, file_id).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
         download_file_streaming(file_id, dest).await
     }
 }

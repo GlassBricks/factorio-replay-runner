@@ -1,5 +1,5 @@
-use crate::{FileMeta, services::FileService};
-use anyhow::Result;
+use crate::services::{FileMeta, FileService};
+use crate::DownloadError;
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -38,13 +38,18 @@ impl std::fmt::Display for DropboxFileId {
     }
 }
 
-async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta> {
+async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta, DownloadError> {
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
-    let response = client.head(&url).send().await?;
+    let response = client.head(&url).send().await.map_err(|e| {
+        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Dropbox"))
+    })?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to get file metadata: HTTP {}", response.status());
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "HTTP {} from Dropbox",
+            response.status()
+        )));
     }
 
     let headers = response.headers();
@@ -72,25 +77,33 @@ async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta> {
     Ok(FileMeta { name, size })
 }
 
-async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<()> {
+async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), DownloadError> {
     use tokio::io::AsyncWriteExt;
 
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await.map_err(|e| {
+        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Dropbox"))
+    })?;
 
     if !response.status().is_success() {
-        anyhow::bail!("Failed to download file: HTTP {}", response.status());
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "HTTP {} from Dropbox",
+            response.status()
+        )));
     }
 
-    let mut file = tokio::fs::File::create(dest).await?;
+    let mut file = tokio::fs::File::create(dest).await.map_err(DownloadError::IoError)?;
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+        let bytes = chunk.map_err(|e| {
+            DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to read response stream"))
+        })?;
+        file.write_all(&bytes).await.map_err(DownloadError::IoError)?;
     }
 
-    file.flush().await?;
+    file.flush().await.map_err(DownloadError::IoError)?;
 
     Ok(())
 }
@@ -125,11 +138,11 @@ impl FileService for DropboxService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
         get_file_info(file_id).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
         download_file(file_id, dest).await
     }
 }
@@ -165,18 +178,21 @@ mod tests {
         }
     }
 
-    async fn file_info_test(service: &mut DropboxService, test_url: &str) -> Result<()> {
+    async fn file_info_test(
+        service: &mut DropboxService,
+        test_url: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let file_id = DropboxFileId::new(test_url.to_string());
-        let file_info = service
-            .get_file_info(&file_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        let file_info = service.get_file_info(&file_id).await?;
         assert_eq!(file_info.name, "foo.zip");
         assert_eq!(file_info.size, 119);
         Ok(())
     }
 
-    async fn download_test(service: &mut DropboxService, test_url: &str) -> Result<()> {
+    async fn download_test(
+        service: &mut DropboxService,
+        test_url: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let file_id = DropboxFileId::new(test_url.to_string());
         let temp_file = tempfile::NamedTempFile::new()?;
         service.download(&file_id, temp_file.path()).await?;

@@ -1,5 +1,5 @@
-use crate::{FileMeta, services::FileService};
-use anyhow::Result;
+use crate::services::{FileMeta, FileService};
+use crate::DownloadError;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -59,24 +59,23 @@ impl std::fmt::Display for SpeedrunFileId {
     }
 }
 
-async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
-    // Use curl to get just the headers
-    let output = create_curl_command(file_id.url()).arg("-I").output()?;
+async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta, DownloadError> {
+    let output = create_curl_command(file_id.url())
+        .arg("-I")
+        .output()
+        .map_err(|e| {
+            DownloadError::ServiceError(
+                anyhow::Error::from(e).context("Failed to execute curl command for speedrun.com"),
+            )
+        })?;
 
     if !output.status.success() {
-        // If HEAD request fails, fall back to extracting from URL
-        let name = file_id
-            .url()
-            .split('/')
-            .next_back()
-            .and_then(|s| s.split('?').next())
-            .unwrap_or("unknown.zip")
-            .to_string();
-
-        return Ok(FileMeta {
-            name: name.clone(),
-            size: 0,
-        });
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "curl failed with status {}: {}",
+            output.status,
+            stderr
+        )));
     }
 
     let headers = String::from_utf8_lossy(&output.stdout);
@@ -108,15 +107,24 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta> {
     Ok(FileMeta { name, size })
 }
 
-async fn download_file(file_id: &SpeedrunFileId, dest: &Path) -> Result<()> {
+async fn download_file(file_id: &SpeedrunFileId, dest: &Path) -> Result<(), DownloadError> {
     let output = create_curl_command(file_id.url())
         .arg("-o")
         .arg(dest)
-        .output()?;
+        .output()
+        .map_err(|e| {
+            DownloadError::ServiceError(
+                anyhow::Error::from(e).context("Failed to execute curl command for speedrun.com"),
+            )
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to download file with curl: {}", stderr);
+        return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
+            "curl failed to download with status {}: {}",
+            output.status,
+            stderr
+        )));
     }
 
     Ok(())
@@ -150,11 +158,11 @@ impl FileService for SpeedrunService {
             .map(|m| SpeedrunFileId::new(m.as_str().to_string()))
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta> {
+    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
         get_file_info(file_id).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<()> {
+    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
         download_file(file_id, dest).await
     }
 }

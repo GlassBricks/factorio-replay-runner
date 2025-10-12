@@ -295,27 +295,27 @@ impl From<ApiError> for ClassifiedError {
    - Define `ClassifiedError` struct with public `class` and `message` fields, using `thiserror::Error`
    - Implement `from_error` helper method for creating `ClassifiedError` from any error
 
-### Phase 2: Refactor zip_downloader
+### Phase 2: Refactor zip_downloader ✓
 
-1. **Refactor `DownloadError` in `zip_downloader/src/lib.rs`**
+1. **Refactor `DownloadError` in `zip_downloader/src/lib.rs`** ✓
    Update the enum to split ambiguous ServiceError/Other variants into specific ones (FileNotAccessible, ServiceError, RateLimited), remove the Other variant. Keep anyhow::Error payloads with #[source] attribute for backtrace preservation.
 
-2. **Update `zip_downloader/src/security.rs`**
+2. **Update `zip_downloader/src/security.rs`** ✓
    No changes needed - already returns anyhow::Error which can be wrapped in DownloadError::SecurityViolation by the caller.
 
-3. **Update `zip_downloader/src/services/gdrive.rs`**
-   Change error handling to distinguish between FileNotAccessible (HTTP errors, HTML responses), ServiceError (network/reqwest errors), and potential RateLimited responses. Use anyhow::Context to add context before wrapping in specific variants.
+3. **Update `zip_downloader/src/services/gdrive.rs`** ✓
+   Changed error handling to return typed DownloadError variants directly: FileNotAccessible for HTTP errors and HTML responses, ServiceError for network/reqwest errors, IoError for file operations. Services now classify errors at the source.
 
-4. **Update `zip_downloader/src/services/dropbox.rs`**
-   Similar to gdrive, classify HTTP errors as FileNotAccessible and network errors as ServiceError, preserving error context with anyhow.
+4. **Update `zip_downloader/src/services/dropbox.rs`** ✓
+   Similar to gdrive, classify HTTP errors as FileNotAccessible and network errors as ServiceError at the service level, preserving error context with anyhow.
 
-5. **Update `zip_downloader/src/services/speedrun.rs`**
-   Update curl command error handling to return FileNotAccessible for HTTP failures and ServiceError for network/execution failures, using anyhow::Context for additional information.
+5. **Update `zip_downloader/src/services/speedrun.rs`** ✓
+   Updated curl command error handling to return typed DownloadError variants directly: FileNotAccessible for HTTP/curl failures, ServiceError for execution failures.
 
-6. **Update `zip_downloader/src/lib.rs` download flow**
-   Update do_download_zip to map security validation errors to SecurityViolation variant and service errors to appropriate variants.
+6. **Update `zip_downloader/src/lib.rs` download flow** ✓
+   Removed classify_service_error helper function. Services now return typed DownloadError directly, eliminating string inspection. SecurityViolation errors continue to be mapped from security validation.
 
-7. **Add classification impl in `cli/src/error.rs`**
+7. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<DownloadError> for ClassifiedError with match on all variants.
 
 ### Phase 3: Add FactorioError

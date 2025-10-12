@@ -1,6 +1,8 @@
 use std::fmt;
 use std::time::Duration;
 
+use zip_downloader::DownloadError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorClass {
     Final,
@@ -21,5 +23,21 @@ impl ClassifiedError {
             class,
             message: format!("{:#}", error),
         }
+    }
+}
+
+impl From<DownloadError> for ClassifiedError {
+    fn from(e: DownloadError) -> Self {
+        let class = match &e {
+            DownloadError::NoLinkFound => ErrorClass::Final,
+            DownloadError::SecurityViolation(_) => ErrorClass::Final,
+            DownloadError::FileNotAccessible(_) => ErrorClass::Final,
+            DownloadError::ServiceError(_) => ErrorClass::Retryable,
+            &DownloadError::RateLimited { retry_after, .. } => {
+                ErrorClass::RateLimited { retry_after }
+            }
+            DownloadError::IoError(_) => ErrorClass::Retryable,
+        };
+        ClassifiedError::from_error(class, &e)
     }
 }
