@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
-use comfy_table::{Cell, Table};
 use std::path::PathBuf;
 
 use crate::database::connection::Database;
 use crate::database::types::{RunFilter, RunStatus};
+
+mod formatter;
 
 #[derive(Args)]
 pub struct QueryArgs {
@@ -38,11 +39,17 @@ pub struct ListArgs {
 
     #[arg(long, default_value = "0")]
     pub offset: u32,
+
+    #[arg(long, default_value = "table")]
+    pub format: String,
 }
 
 #[derive(Args)]
 pub struct ShowArgs {
     pub run_id: String,
+
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
 #[derive(Args)]
@@ -72,6 +79,8 @@ async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
         .transpose()
         .context("Invalid status value")?;
 
+    let format = formatter::OutputFormat::from_str(&args.format)?;
+
     let filter = RunFilter {
         status,
         game_id: args.game_id,
@@ -83,46 +92,27 @@ async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
     let runs = db.query_runs(filter).await?;
 
     if runs.is_empty() {
-        println!("No runs found matching the criteria");
+        match format {
+            formatter::OutputFormat::Json => println!("[]"),
+            formatter::OutputFormat::Csv => {
+                println!(
+                    "run_id,game_id,category_id,submitted_date,status,retry_count,error_class,error_message,next_retry_at,created_at,updated_at"
+                )
+            }
+            formatter::OutputFormat::Table => {
+                println!("No runs found matching the criteria")
+            }
+        }
         return Ok(());
     }
 
-    let mut table = Table::new();
-    table.set_header(vec![
-        "Run ID",
-        "Game/Category",
-        "Submitted",
-        "Status",
-        "Retries",
-        "Error Class",
-    ]);
+    let output = match format {
+        formatter::OutputFormat::Table => formatter::format_runs_as_table(&runs),
+        formatter::OutputFormat::Json => formatter::format_runs_as_json(&runs)?,
+        formatter::OutputFormat::Csv => formatter::format_runs_as_csv(&runs)?,
+    };
 
-    for run in runs {
-        let game_category = format!(
-            "{}/{}",
-            &run.game_id[..8.min(run.game_id.len())],
-            &run.category_id[..8.min(run.category_id.len())]
-        );
-        let submitted = run.submitted_date.format("%Y-%m-%d %H:%M").to_string();
-        let status = format_status(&run.status);
-        let retries = if run.retry_count > 0 {
-            run.retry_count.to_string()
-        } else {
-            "-".to_string()
-        };
-        let error_class = run.error_class.as_deref().unwrap_or("-");
-
-        table.add_row(vec![
-            Cell::new(&run.run_id[..8.min(run.run_id.len())]),
-            Cell::new(game_category),
-            Cell::new(submitted),
-            Cell::new(status),
-            Cell::new(retries),
-            Cell::new(error_class),
-        ]);
-    }
-
-    println!("{table}");
+    println!("{}", output);
     Ok(())
 }
 
@@ -154,6 +144,11 @@ async fn handle_show(db: &Database, args: ShowArgs) -> Result<()> {
         .get_run(&args.run_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Run not found: {}", args.run_id))?;
+
+    if args.format == "json" {
+        println!("{}", formatter::format_run_as_json(&run)?);
+        return Ok(());
+    }
 
     println!("Run Details");
     println!("===========");

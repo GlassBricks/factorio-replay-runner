@@ -21,7 +21,7 @@ pub struct RunFilter {
     pub offset: u32,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 #[allow(dead_code)]
 pub struct Run {
     pub run_id: String,
