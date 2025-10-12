@@ -4,6 +4,8 @@ use replay_script::ReplayScripts;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::retry::RetryConfig;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
@@ -18,6 +20,8 @@ pub struct DaemonConfig {
     #[serde(default = "default_database_path")]
     pub database_path: PathBuf,
     pub cutoff_date: String,
+    #[serde(default)]
+    pub retry: RetryConfig,
 }
 
 fn default_game_rules_file() -> PathBuf {

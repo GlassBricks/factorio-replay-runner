@@ -208,10 +208,13 @@ Since the system hasn't been deployed yet:
   - [x] Update `001_initial_schema.sql` with retry fields
   - [x] Update `Run` struct with new fields
   - [x] Update all database queries
-- [ ] Phase 2: Retry configuration
-  - [ ] Create `cli/src/retry.rs`
-  - [ ] Implement `RetryConfig`
-  - [ ] Implement `calculate_next_retry`
+- [x] Phase 2: Retry configuration
+  - [x] Create `cli/src/retry.rs`
+  - [x] Implement `RetryConfig`
+  - [x] Implement `calculate_next_retry`
+  - [x] Implement `error_class_to_string`
+  - [x] Add `RetryConfig` to `DaemonConfig`
+  - [x] Write comprehensive unit tests
 - [ ] Phase 3: Database operations
   - [ ] Rename `get_next_discovered_run` to `get_next_run_to_process`
   - [ ] Add `mark_run_permanently_failed`

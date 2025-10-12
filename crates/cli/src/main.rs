@@ -21,6 +21,7 @@ mod config;
 mod daemon;
 mod database;
 mod error;
+mod retry;
 mod run_processing;
 mod run_replay;
 mod speedrun_api;

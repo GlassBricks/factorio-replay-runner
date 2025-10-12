@@ -148,6 +148,7 @@ mod tests {
             poll_interval_seconds: 3600,
             database_path: PathBuf::from(":memory:"),
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),
+            retry: Default::default(),
         };
         let work_notify = Notify::new();
 
