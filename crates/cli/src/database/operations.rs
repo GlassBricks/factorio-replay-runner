@@ -39,7 +39,7 @@ impl Database {
         Ok(())
     }
 
-    async fn update_run_status(
+    pub async fn update_run_status(
         &self,
         run_id: &str,
         status: RunStatus,

@@ -21,6 +21,9 @@ pub enum QuerySubcommand {
     List(ListArgs),
     Show(ShowArgs),
     Stats(StatsArgs),
+    Queue(QueueArgs),
+    Errors(ErrorsArgs),
+    Reset(ResetArgs),
 }
 
 #[derive(Args)]
@@ -61,6 +64,26 @@ pub struct StatsArgs {
     pub category_id: Option<String>,
 }
 
+#[derive(Args)]
+pub struct QueueArgs {}
+
+#[derive(Args)]
+pub struct ErrorsArgs {
+    #[arg(long, default_value = "20")]
+    pub limit: u32,
+
+    #[arg(long)]
+    pub error_class: Option<String>,
+}
+
+#[derive(Args)]
+pub struct ResetArgs {
+    pub run_id: String,
+
+    #[arg(long)]
+    pub clear_error: bool,
+}
+
 pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
     let db = Database::new(&args.database).await?;
 
@@ -68,6 +91,9 @@ pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
         QuerySubcommand::List(list_args) => handle_list(&db, list_args).await,
         QuerySubcommand::Show(show_args) => handle_show(&db, show_args).await,
         QuerySubcommand::Stats(stats_args) => handle_stats(&db, stats_args).await,
+        QuerySubcommand::Queue(queue_args) => handle_queue(&db, queue_args).await,
+        QuerySubcommand::Errors(errors_args) => handle_errors(&db, errors_args).await,
+        QuerySubcommand::Reset(reset_args) => handle_reset(&db, reset_args).await,
     }
 }
 
@@ -259,6 +285,105 @@ async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
         for (class, count) in error_counts {
             println!("  {:<15} {}", class, count);
         }
+    }
+
+    Ok(())
+}
+
+async fn handle_queue(db: &Database, _args: QueueArgs) -> Result<()> {
+    let discovered_filter = RunFilter {
+        status: Some(RunStatus::Discovered),
+        limit: 1000,
+        ..Default::default()
+    };
+    let discovered_runs = db.query_runs(discovered_filter).await?;
+
+    let retry_filter = RunFilter {
+        status: Some(RunStatus::Error),
+        limit: 1000,
+        ..Default::default()
+    };
+    let error_runs = db.query_runs(retry_filter).await?;
+    let retry_scheduled: Vec<_> = error_runs
+        .iter()
+        .filter(|r| r.next_retry_at.is_some())
+        .collect();
+
+    println!("Queue Status");
+    println!("============");
+    println!();
+    println!("Pending Runs (Discovered):  {}", discovered_runs.len());
+    println!("Scheduled Retries:          {}", retry_scheduled.len());
+
+    if let Some(next_retry) = retry_scheduled.iter().filter_map(|r| r.next_retry_at).min() {
+        println!(
+            "Next Retry At:              {}",
+            next_retry.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+    }
+
+    Ok(())
+}
+
+async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
+    let mut filter = RunFilter {
+        status: Some(RunStatus::Error),
+        limit: args.limit,
+        ..Default::default()
+    };
+
+    if args.error_class.is_some() {
+        filter.limit = 1000;
+    }
+
+    let mut error_runs = db.query_runs(filter).await?;
+
+    if let Some(error_class) = args.error_class {
+        error_runs.retain(|r| r.error_class.as_deref() == Some(&error_class));
+    }
+
+    if error_runs.is_empty() {
+        println!("No error runs found");
+        return Ok(());
+    }
+
+    println!("Recent Errors");
+    println!("=============");
+    println!();
+
+    for run in error_runs.iter().take(args.limit as usize) {
+        println!("Run ID:       {}", run.run_id);
+        println!("Game/Cat:     {}/{}", run.game_id, run.category_id);
+        println!(
+            "Error Class:  {}",
+            run.error_class.as_deref().unwrap_or("N/A")
+        );
+        println!("Retry Count:  {}", run.retry_count);
+        if let Some(error_msg) = &run.error_message {
+            println!("Error:        {}", error_msg);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
+    let _run = db
+        .get_run(&args.run_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Run not found: {}", args.run_id))?;
+
+    db.update_run_status(&args.run_id, RunStatus::Discovered, None)
+        .await?;
+
+    if args.clear_error {
+        db.clear_retry_fields(&args.run_id).await?;
+    }
+
+    println!("Reset run {} to discovered status", args.run_id);
+    if args.clear_error {
+        println!("Cleared retry fields");
     }
 
     Ok(())
