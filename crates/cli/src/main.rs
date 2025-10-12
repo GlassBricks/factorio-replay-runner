@@ -20,6 +20,7 @@ use crate::run_processing::download_and_run_replay;
 mod config;
 mod daemon;
 mod database;
+mod error;
 mod run_processing;
 mod run_replay;
 mod speedrun_api;
