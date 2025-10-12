@@ -5,7 +5,6 @@ use factorio_manager::error::FactorioError;
 use factorio_manager::expected_mods::ExpectedMods;
 use factorio_manager::factorio_install_dir::{FactorioInstallDir, VersionStr};
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
-use log::debug;
 use log::info;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -151,7 +150,7 @@ pub async fn poll_game_category(
         })
         .collect();
 
-    debug!("Found {} new runs", new_runs.len());
+    info!("Found {} new runs", new_runs.len());
     Ok(new_runs)
 }
 

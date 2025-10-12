@@ -71,7 +71,7 @@ async fn perform_pre_run_checks(
     info!("Performing pre-run checks");
     let mod_versions = instance.get_mod_versions(save_path).await?;
     check_expected_mods(expected_mods, &mod_versions)?;
-    info!("Pre-run checks passed");
+    debug!("Pre-run checks passed");
     Ok(())
 }
 
@@ -94,8 +94,7 @@ async fn run_and_log_replay(
     log_path: &Path,
     rules: &RunRules,
 ) -> Result<ReplayReport, FactorioError> {
-    info!("Starting replay");
-    info!("Writing to: {}", log_path.display());
+    info!("Starting replay, at {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
     let (max_msg_level, exited_via_script) = record_output(&mut process, log_path).await?;
 
@@ -133,7 +132,7 @@ fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(),
             let output_dir = log_path.parent().unwrap();
             let dest_path = output_dir.join("factorio-current.log");
             std::fs::copy(&factorio_log, &dest_path)
-                .map(|_| info!("Copied factorio log to: {}", dest_path.display()))
+                .map(|_| debug!("Copied factorio log to: {}", dest_path.display()))
         })
         .transpose()?;
     Ok(())
@@ -211,7 +210,7 @@ fn msg_stream(process: &mut FactorioProcess) -> Pin<Box<dyn Stream<Item = Stream
                         yield StreamItem::Exit(exit);
                         break;
                     } else if let Ok(msg) = ReplayMsg::from_str(line) {
-                        log::info!("{msg}");
+                        log::debug!("{msg}");
                         yield StreamItem::Message(msg);
                     } else {
                         log::debug!("{line}");

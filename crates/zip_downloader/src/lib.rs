@@ -11,7 +11,7 @@ use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileMeta, FileService};
 
 use anyhow::Result;
-use log::{debug, error, info};
+use log::{debug, error};
 use tempfile::NamedTempFile;
 
 pub struct DownloadedFile {
@@ -108,7 +108,7 @@ impl FileDownloader {
     ) -> Result<DownloadedFile, DownloadError> {
         let result = self.do_download_zip(input, out_file_or_path).await;
         match &result {
-            Ok(zip) => info!(
+            Ok(zip) => debug!(
                 "Successfully downloaded {} to {}",
                 zip.name,
                 zip.path.display()
@@ -132,20 +132,20 @@ impl FileDownloader {
         input: &str,
         out_file: &Path,
     ) -> Result<DownloadedFile, DownloadError> {
-        info!("Starting download");
+        debug!("Starting download");
 
         let mut download_handle = Self::get_download_handle(&mut self.services, input)?;
-        info!("Found {download_handle}");
+        debug!("Found {download_handle}");
 
-        info!("Getting file info");
+        debug!("Getting file info");
         let file_info = download_handle.get_file_info().await?;
 
         debug!("File info: {file_info:?}");
-        info!("Running initial checks");
+        debug!("Running initial checks");
         security::validate_file_info(&file_info, &self.security_config)
             .map_err(DownloadError::SecurityViolation)?;
 
-        info!("Downloading file");
+        debug!("Downloading file");
 
         let file_path = if out_file.is_dir() {
             out_file.join(file_info.name.as_str())
@@ -155,7 +155,7 @@ impl FileDownloader {
 
         download_handle.download(&file_path).await?;
 
-        info!("Running file checks");
+        debug!("Running file checks");
         let mut reopened_file = File::open(&file_path)?;
         security::validate_downloaded_file(&mut reopened_file, &file_info, &self.security_config)
             .map_err(DownloadError::SecurityViolation)?;
@@ -170,7 +170,7 @@ impl FileDownloader {
         services: &'a mut [DynFileService],
         input: &str,
     ) -> Result<Box<dyn FileDownloadHandle + 'a>, DownloadError> {
-        info!("Input is: {}", input);
+        debug!("Input is: {}", input);
         services
             .iter_mut()
             .find_map(|service| service.detect_link(input))

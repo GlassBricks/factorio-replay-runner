@@ -140,7 +140,8 @@ mod tests {
         assert!(!scripts.win_on_scenario_finished);
 
         // Test partial deserialization preserves defaults for missing fields
-        let scripts: ReplayScripts = serde_yaml::from_str("win_on_scenario_finished: true").unwrap();
+        let scripts: ReplayScripts =
+            serde_yaml::from_str("win_on_scenario_finished: true").unwrap();
         assert!(scripts.win_on_scenario_finished);
         assert_eq!(scripts.max_players, Some(1)); // Should still use configured default
     }
