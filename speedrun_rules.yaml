@@ -27,10 +27,10 @@ games:
       - base
     categories:
       ndxjper2: # Any%
-        win_on_rocket_launch: true
+        win_on_scenario_finished: true
 
       7dg85xp2: # Default Settings
-        win_on_rocket_launch: true
+        win_on_scenario_finished: true
 
       wkpy7ljk: # 100%
         blueprint_import: true
@@ -38,17 +38,17 @@ games:
       7dggqegd: {} # Steelaxe%
 
       wkpjq9wk: # Any% MP
-        win_on_rocket_launch: true
+        win_on_scenario_finished: true
         max_players: 8
 
       9kvxm882: # Default Settings MP
-        win_on_rocket_launch: true
+        win_on_scenario_finished: true
         max_players: 8
 
       wdmw3542: {} # Getting on track like a pro
 
       9kv7oeek: # Any% Duo
-        win_on_rocket_launch: true
+        win_on_scenario_finished: true
         max_players: 2
 
       mke9y0nd: # Massive Multiplayer

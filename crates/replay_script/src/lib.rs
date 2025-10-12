@@ -94,7 +94,7 @@ mod tests {
         assert!(output.contains("no_map_editor"));
         assert!(output.contains("no_open_other_player"));
 
-        assert!(!output.contains("win_on_rocket_launch"));
+        assert!(!output.contains("win_on_scenario_finished"));
         assert!(output.contains("local maxPlayers = 1\n"));
     }
 
@@ -102,14 +102,14 @@ mod tests {
     fn test_configure_script() {
         let scripts = ReplayScripts {
             blueprint_import: true,
-            win_on_rocket_launch: true,
+            win_on_scenario_finished: true,
             max_players: Some(137),
             ..Default::default()
         };
 
         let output = scripts.to_string();
         assert!(!output.contains("blueprint_import"));
-        assert!(output.contains("win_on_rocket_launch"));
+        assert!(output.contains("win_on_scenario_finished"));
         assert!(output.contains("local maxPlayers = 137"));
     }
 
@@ -137,11 +137,11 @@ mod tests {
         assert!(!scripts.blueprint_import);
         assert!(!scripts.map_editor);
         assert!(!scripts.open_other_player);
-        assert!(!scripts.win_on_rocket_launch);
+        assert!(!scripts.win_on_scenario_finished);
 
         // Test partial deserialization preserves defaults for missing fields
-        let scripts: ReplayScripts = serde_yaml::from_str("win_on_rocket_launch: true").unwrap();
-        assert!(scripts.win_on_rocket_launch);
+        let scripts: ReplayScripts = serde_yaml::from_str("win_on_scenario_finished: true").unwrap();
+        assert!(scripts.win_on_scenario_finished);
         assert_eq!(scripts.max_players, Some(1)); // Should still use configured default
     }
 
@@ -174,12 +174,12 @@ mod tests {
 
     #[test]
     fn test_parse_exit_signal() {
-        let exit = "REPLAY_EXIT_SUCCESS:\t456\tFirst rocket launched";
+        let exit = "REPLAY_EXIT_SUCCESS:\t456\tScenario finished";
         let exit = ExitSignal::from_str(exit);
         assert!(exit.is_ok());
         let exit = exit.unwrap();
         assert_eq!(exit.time, 456);
-        assert_eq!(exit.message, "First rocket launched");
+        assert_eq!(exit.message, "Scenario finished");
 
         let invalid = "REPLAY_SCRIPT_EVENT:\t123\tInfo\tNot an exit";
         assert!(ExitSignal::from_str(invalid).is_err());
