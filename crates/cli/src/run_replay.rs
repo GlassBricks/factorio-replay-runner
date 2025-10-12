@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::{fs::File, io::Write, path::Path};
 
 use anyhow::Result;
+use factorio_manager::error::FactorioError;
 use factorio_manager::factorio_install_dir::VersionStr;
 use factorio_manager::factorio_instance::{FactorioInstance, FactorioProcess};
 use factorio_manager::save_file::SaveFile;
@@ -53,12 +54,9 @@ pub async fn run_replay(
     let version = save_file.get_factorio_version()?;
     info!("Save version: {}", version);
 
-    anyhow::ensure!(
-        version >= MIN_FACTORIO_VERSION,
-        "Factorio version {} is not supported. Minimum version required: {} (critical bug fixed)",
-        version,
-        MIN_FACTORIO_VERSION
-    );
+    if version < MIN_FACTORIO_VERSION {
+        return Err(FactorioError::VersionTooOld { version }.into());
+    }
 
     let mut instance = get_instance(install_dir, save_file).await?;
     perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
@@ -71,7 +69,7 @@ async fn get_instance(
     save_file: &mut SaveFile<File>,
 ) -> Result<FactorioInstance> {
     let version = save_file.get_factorio_version()?;
-    install_dir.get_or_download_factorio(version).await
+    Ok(install_dir.get_or_download_factorio(version).await?)
 }
 
 async fn perform_pre_run_checks(

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
 use itertools::Itertools;
 use std::{
     fmt::Display,
@@ -8,6 +8,7 @@ use std::{
 };
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult, write::SimpleFileOptions};
 
+use crate::error::FactorioError;
 use crate::factorio_install_dir::VersionStr;
 
 pub struct SaveFile<F: Read + Seek> {
@@ -17,8 +18,9 @@ pub struct SaveFile<F: Read + Seek> {
 }
 
 impl<F: Read + Seek> SaveFile<F> {
-    pub fn new(file: F) -> Result<Self> {
-        let mut zip = ZipArchive::new(file)?;
+    pub fn new(file: F) -> Result<Self, FactorioError> {
+        let mut zip = ZipArchive::new(file)
+            .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
         let save_name = find_save_name(&mut zip)?;
         Ok(Self {
             zip,
@@ -34,7 +36,7 @@ impl<F: Read + Seek> SaveFile<F> {
 
 pub struct WrittenSaveFile(pub PathBuf, pub SaveFile<File>);
 
-fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
+fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String, FactorioError> {
     let save_name = (0..zip.len())
         .filter_map(|i| zip.by_index_raw(i).ok().and_then(|f| f.enclosed_name()))
         .filter_map(|p| {
@@ -46,14 +48,15 @@ fn find_save_name<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Result<String> {
         .exactly_one()
         .map_err(|mut err| {
             let names = err.join(", ");
-            if names.is_empty() {
+            let error = if names.is_empty() {
                 anyhow::anyhow!("Failed to find save name in save file: no folder found")
             } else {
                 anyhow::anyhow!(
                     "Failed to find save name in save file, multiple folders found: {}",
                     names
                 )
-            }
+            };
+            FactorioError::InvalidSaveFile(error)
         })?;
 
     Ok(save_name)
@@ -73,30 +76,38 @@ impl<F: Read + Seek> SaveFile<F> {
             .into_owned()
     }
 
-    fn get_inner_file(&'_ mut self, path: impl AsRef<Path>) -> Result<ZipFile<'_, F>> {
+    fn get_inner_file(
+        &'_ mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<ZipFile<'_, F>, FactorioError> {
         let path = self.inner_file_path(path);
         self.zip
             .by_name(&path)
             .with_context(|| format!("{} not found in zip file", path))
+            .map_err(|e| FactorioError::InvalidSaveFile(e))
     }
 
-    pub fn get_control_lua_contents(&mut self) -> Result<&str> {
+    pub fn get_control_lua_contents(&mut self) -> Result<&str, FactorioError> {
         if self.control_lua_contents.is_none() {
-            let contents = read_to_new_string(self.get_inner_file("control.lua")?)?;
+            let contents = read_to_new_string(self.get_inner_file("control.lua")?)
+                .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
             self.control_lua_contents = Some(contents);
         }
         Ok(self.control_lua_contents.as_ref().unwrap())
     }
 
-    pub fn get_factorio_version(&mut self) -> Result<VersionStr> {
-        let mut level_init_file = self
-            .get_inner_file("level-init.dat")
-            .context("Failed to get level-init.dat from save file")?;
+    pub fn get_factorio_version(&mut self) -> Result<VersionStr, FactorioError> {
+        let mut level_init_file = self.get_inner_file("level-init.dat").map_err(|e| {
+            FactorioError::InvalidVersion(
+                anyhow::Error::new(e).context("Failed to get level-init.dat from save file"),
+            )
+        })?;
 
         let mut buffer = [0u8; 6];
         level_init_file
             .read_exact(&mut buffer)
-            .context("Failed to read version bytes from level-init.dat")?;
+            .context("Failed to read version bytes from level-init.dat")
+            .map_err(|e| FactorioError::InvalidVersion(e))?;
 
         let major = u16::from_le_bytes([buffer[0], buffer[1]]);
         let minor = u16::from_le_bytes([buffer[2], buffer[3]]);
@@ -125,21 +136,36 @@ impl<F: Read + Seek> SaveFile<F> {
         &mut self,
         out_file: &mut File,
         replay_script: impl Display,
-    ) -> Result<()> {
+    ) -> Result<(), FactorioError> {
         let ctrl_lua_path = self.inner_file_path("control.lua");
         let ctrl_lua_contents = self.get_control_lua_contents()?.to_string();
 
         let mut zip = ZipWriter::new(out_file);
-        self.copy_files_except(&mut zip, &ctrl_lua_path)?;
+        self.copy_files_except(&mut zip, &ctrl_lua_path)
+            .map_err(|e| {
+                FactorioError::ScriptInjectionFailed(
+                    anyhow::Error::from(e).context("Failed to copy files"),
+                )
+            })?;
 
-        zip.start_file(ctrl_lua_path, SimpleFileOptions::default())?;
+        zip.start_file(ctrl_lua_path, SimpleFileOptions::default())
+            .map_err(|e| {
+                FactorioError::ScriptInjectionFailed(
+                    anyhow::Error::from(e).context("Failed to start control.lua file in zip"),
+                )
+            })?;
         writeln!(
             zip,
             r"{ctrl_lua_contents}
 
 -- Begin replay script
 {replay_script}",
-        )?;
+        )
+        .map_err(|e| {
+            FactorioError::ScriptInjectionFailed(
+                anyhow::Error::from(e).context("Failed to write control.lua contents"),
+            )
+        })?;
         Ok(())
     }
 }
@@ -153,7 +179,7 @@ mod tests {
     use tempfile::NamedTempFile;
     use test_utils;
 
-    fn create_test_zip(files: &[(&str, &str)]) -> Result<NamedTempFile> {
+    fn create_test_zip(files: &[(&str, &str)]) -> anyhow::Result<NamedTempFile> {
         let temp_file = NamedTempFile::new()?;
         let mut zip = ZipWriter::new(temp_file.reopen()?);
 
@@ -170,14 +196,15 @@ mod tests {
         Ok(temp_file)
     }
 
-    fn simple_test_zip(names: &[&str]) -> Result<NamedTempFile> {
+    fn simple_test_zip(names: &[&str]) -> anyhow::Result<NamedTempFile> {
         let files = names.iter().map(|&name| (name, "test")).collect_vec();
         create_test_zip(&files)
     }
 
-    fn save_name_result(names: &[&str]) -> Result<String> {
-        let temp_file = simple_test_zip(names)?;
-        let mut zip = ZipArchive::new(temp_file)?;
+    fn save_name_result(names: &[&str]) -> Result<String, FactorioError> {
+        let temp_file = simple_test_zip(names).map_err(|e| FactorioError::InvalidSaveFile(e))?;
+        let mut zip = ZipArchive::new(temp_file)
+            .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
         find_save_name(&mut zip)
     }
 
@@ -194,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_save_name_multiple_directories_error() -> Result<()> {
+    fn test_find_save_name_multiple_directories_error() -> anyhow::Result<()> {
         let save_name = save_name_result(&["save1/control.lua", "save2/level-init.dat"]);
         assert!(save_name.is_err());
         let save_name = save_name_result(&["file1.txt", "file2.txt"]);
@@ -202,7 +229,7 @@ mod tests {
         Ok(())
     }
 
-    fn mock_save_file() -> Result<NamedTempFile> {
+    fn mock_save_file() -> anyhow::Result<NamedTempFile> {
         let VersionStr(major, minor, patch) = TEST_VERSION;
         // Create version bytes in little-endian format
         let mut version_bytes = Vec::new();
@@ -219,10 +246,9 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_save_file() -> Result<()> {
+    fn test_mock_save_file() -> anyhow::Result<()> {
         let file = mock_save_file()?;
-        let mut save_file =
-            SaveFile::new(file).context("Failed to create SaveFile from mock file")?;
+        let mut save_file = SaveFile::new(file)?;
         assert_eq!(save_file.save_name(), "my-save");
         let ctrl_lua_contents = save_file.get_control_lua_contents()?;
         assert_eq!(ctrl_lua_contents, "--mock ctrl lua contents");
@@ -233,7 +259,7 @@ mod tests {
     }
 
     impl SaveFile<File> {
-        pub(crate) fn get_test_save_file() -> Result<SaveFile<File>> {
+        pub(crate) fn get_test_save_file() -> Result<SaveFile<File>, FactorioError> {
             let fixtures_dir = test_utils::fixtures_dir();
             let file = File::open(fixtures_dir.join("TEST.zip"))?;
             let save_file = SaveFile::new(file)?;
@@ -242,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_fixture() -> Result<()> {
+    fn test_get_fixture() -> anyhow::Result<()> {
         let mut save_file = SaveFile::get_test_save_file()?;
         assert_eq!(save_file.save_name(), "TEST");
         let ctrl_lua_contents = save_file.get_control_lua_contents()?;
@@ -255,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_factorio_version() -> Result<()> {
+    fn test_get_factorio_version() -> anyhow::Result<()> {
         let mut save_file = SaveFile::get_test_save_file()?;
         let version = save_file.get_factorio_version()?;
         let expected = TEST_VERSION;

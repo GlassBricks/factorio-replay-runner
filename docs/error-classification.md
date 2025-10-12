@@ -318,27 +318,27 @@ impl From<ApiError> for ClassifiedError {
 7. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<DownloadError> for ClassifiedError with match on all variants.
 
-### Phase 3: Add FactorioError
+### Phase 3: Add FactorioError ✓
 
-1. **Create `factorio_manager/src/error.rs`**
+1. **Create `factorio_manager/src/error.rs`** ✓
    Define FactorioError enum with all variants listed above. Export from lib.rs.
 
-2. **Update `factorio_manager/src/factorio_install_dir.rs`**
+2. **Update `factorio_manager/src/factorio_install_dir.rs`** ✓
    Replace anyhow::bail! with FactorioError variants: VersionStr::try_from errors become InvalidVersion (wrapping the parse error), download failures become FactorioDownloadFailed (wrapping network errors with context), extraction failures become ExtractionFailed, path issues become InstallDirError (wrapping IO errors), get_factorio returning None becomes InstallationNotFound.
 
-3. **Update `factorio_manager/src/expected_mods.rs`**
+3. **Update `factorio_manager/src/expected_mods.rs`** ✓
    Change check_expected_mods to return FactorioError::ModMismatch with extracted missing/extra mod lists instead of anyhow::Error.
 
-4. **Update `factorio_manager/src/save_file.rs`**
+4. **Update `factorio_manager/src/save_file.rs`** ✓
    Replace Context errors with FactorioError: ZIP errors become InvalidSaveFile (wrapping zip errors), version read errors become InvalidVersion (wrapping IO errors), find_save_name errors become InvalidSaveFile (wrapping anyhow with context), script injection errors become ScriptInjectionFailed (wrapping zip/IO errors).
 
-5. **Update `factorio_manager/src/factorio_instance.rs`**
+5. **Update `factorio_manager/src/factorio_instance.rs`** ✓
    Change spawn to return ProcessSpawnFailed on Command::spawn IO errors, get_mod_versions failures become ModInfoReadFailed (wrapping command/parse errors with context).
 
-6. **Update `cli/src/run_replay.rs`**
+6. **Update `cli/src/run_replay.rs`** ✓
    Change anyhow::ensure! version check to return FactorioError::VersionTooOld.
 
-7. **Add classification impl in `cli/src/error.rs`**
+7. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<FactorioError> for ClassifiedError with match on all variants.
 
 ### Phase 4: Add ApiError

@@ -1,6 +1,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use factorio_manager::error::FactorioError;
 use zip_downloader::DownloadError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,26 @@ impl From<DownloadError> for ClassifiedError {
                 ErrorClass::RateLimited { retry_after }
             }
             DownloadError::IoError(_) => ErrorClass::Retryable,
+        };
+        ClassifiedError::from_error(class, &e)
+    }
+}
+
+impl From<FactorioError> for ClassifiedError {
+    fn from(e: FactorioError) -> Self {
+        let class = match &e {
+            FactorioError::InvalidSaveFile(_) => ErrorClass::Final,
+            FactorioError::InvalidVersion(_) => ErrorClass::Final,
+            FactorioError::VersionTooOld { .. } => ErrorClass::Final,
+            FactorioError::ModMismatch { .. } => ErrorClass::Final,
+            FactorioError::ScriptInjectionFailed(_) => ErrorClass::Final,
+            FactorioError::FactorioDownloadFailed { .. } => ErrorClass::Retryable,
+            FactorioError::ExtractionFailed(_) => ErrorClass::Retryable,
+            FactorioError::InstallationNotFound(_) => ErrorClass::Retryable,
+            FactorioError::InstallDirError(_) => ErrorClass::Retryable,
+            FactorioError::ProcessSpawnFailed(_) => ErrorClass::Retryable,
+            FactorioError::ModInfoReadFailed(_) => ErrorClass::Retryable,
+            FactorioError::IoError(_) => ErrorClass::Retryable,
         };
         ClassifiedError::from_error(class, &e)
     }

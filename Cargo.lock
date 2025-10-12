@@ -717,6 +717,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "test-utils",
+ "thiserror",
  "tokio",
  "zip",
 ]

@@ -1,5 +1,5 @@
+use crate::error::FactorioError;
 use crate::mod_versions::ModVersions;
-use anyhow::Error;
 use std::collections::HashSet;
 
 pub type ExpectedMods = HashSet<String>;
@@ -7,21 +7,23 @@ pub type ExpectedMods = HashSet<String>;
 pub fn check_expected_mods(
     expected_mods: &ExpectedMods,
     actual_mods: &ModVersions,
-) -> anyhow::Result<()> {
+) -> Result<(), FactorioError> {
     let actual_mod_list = actual_mods.keys().cloned().collect::<HashSet<String>>();
 
     if expected_mods != &actual_mod_list {
         let extra_mods = actual_mod_list
             .difference(expected_mods)
-            .collect::<Vec<_>>();
+            .map(|s| s.clone())
+            .collect::<Vec<String>>();
         let missing_mods = expected_mods
             .difference(&actual_mod_list)
-            .collect::<Vec<_>>();
-        let msg = format!(
-            "Missing mods: {:?}, Extra mods: {:?}",
-            missing_mods, extra_mods
-        );
-        return Err(Error::msg(msg));
+            .map(|s| s.clone())
+            .collect::<Vec<String>>();
+
+        return Err(FactorioError::ModMismatch {
+            missing_mods,
+            extra_mods,
+        });
     }
     Ok(())
 }
@@ -46,9 +48,9 @@ mod tests {
 
         let result = check_expected_mods(&expected, &actual);
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "Missing mods: [\"quality\"], Extra mods: [\"space-age\"]"
-        );
+        let err = result.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(err_msg.contains("quality"));
+        assert!(err_msg.contains("space-age"));
     }
 }

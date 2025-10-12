@@ -1,5 +1,5 @@
-use crate::services::{FileMeta, FileService};
 use crate::DownloadError;
+use crate::services::{FileMeta, FileService};
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -42,7 +42,9 @@ async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta, DownloadErro
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
     let response = client.head(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Dropbox"))
+        DownloadError::ServiceError(
+            anyhow::Error::from(e).context("Failed to send request to Dropbox"),
+        )
     })?;
 
     if !response.status().is_success() {
@@ -83,7 +85,9 @@ async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), Downl
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
     let response = client.get(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to send request to Dropbox"))
+        DownloadError::ServiceError(
+            anyhow::Error::from(e).context("Failed to send request to Dropbox"),
+        )
     })?;
 
     if !response.status().is_success() {
@@ -93,14 +97,20 @@ async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), Downl
         )));
     }
 
-    let mut file = tokio::fs::File::create(dest).await.map_err(DownloadError::IoError)?;
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(DownloadError::IoError)?;
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk.map_err(|e| {
-            DownloadError::ServiceError(anyhow::Error::from(e).context("Failed to read response stream"))
+            DownloadError::ServiceError(
+                anyhow::Error::from(e).context("Failed to read response stream"),
+            )
         })?;
-        file.write_all(&bytes).await.map_err(DownloadError::IoError)?;
+        file.write_all(&bytes)
+            .await
+            .map_err(DownloadError::IoError)?;
     }
 
     file.flush().await.map_err(DownloadError::IoError)?;
