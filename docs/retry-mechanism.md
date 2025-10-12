@@ -215,18 +215,21 @@ Since the system hasn't been deployed yet:
   - [x] Implement `error_class_to_string`
   - [x] Add `RetryConfig` to `DaemonConfig`
   - [x] Write comprehensive unit tests
-- [ ] Phase 3: Database operations
-  - [ ] Rename `get_next_discovered_run` to `get_next_run_to_process`
-  - [ ] Add `mark_run_permanently_failed`
-  - [ ] Add `schedule_retry`
-  - [ ] Add `clear_retry_fields`
-  - [ ] Update `process_replay_result`
-- [ ] Phase 4: Processor integration
-  - [ ] Update `find_run_to_process`
-  - [ ] Update `process_run`
+- [x] Phase 3: Database operations
+  - [x] Rename `get_next_discovered_run` to `get_next_run_to_process`
+  - [x] Add `mark_run_permanently_failed`
+  - [x] Add `schedule_retry`
+  - [x] Add `clear_retry_fields`
+  - [x] Update `process_replay_result`
+  - [x] Write comprehensive unit tests for retry database operations
+- [x] Phase 4: Processor integration
+  - [x] Update `find_run_to_process` to use `get_next_run_to_process`
+  - [x] Update `process_run` to pass `retry_config` to `process_replay_result`
+  - [x] Add `retry_config` to `RunProcessingContext`
+  - [x] Update all `RunProcessingContext` creation sites
 - [ ] Phase 5: Testing
   - [ ] Integration tests
   - [ ] Database tests
-- [ ] Phase 6: Observability
-  - [ ] Add retry logging
+- [x] Phase 6: Observability
+  - [x] Add retry logging (logging added in `process_replay_result`)
   - [ ] Update CLAUDE.md

@@ -19,6 +19,7 @@ use crate::database::connection::Database;
 use crate::database::types::NewRun;
 use crate::error::ClassifiedError;
 use crate::error::ErrorClass;
+use crate::retry::RetryConfig;
 use crate::run_replay::{ReplayReport, run_replay};
 use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
 
@@ -31,6 +32,7 @@ pub struct RunProcessingContext {
     pub src_rules: SrcRunRules,
     pub install_dir: PathBuf,
     pub output_dir: PathBuf,
+    pub retry_config: RetryConfig,
 }
 
 impl RunProcessingContext {

@@ -231,7 +231,9 @@ async fn run_src(
     .await;
 
     let report = result.as_ref().ok().cloned();
-    db.process_replay_result(&fetched_run_id, result).await?;
+    let retry_config = crate::retry::RetryConfig::default();
+    db.process_replay_result(&fetched_run_id, result, &retry_config)
+        .await?;
 
     report.ok_or_else(|| anyhow::anyhow!("Failed to process replay"))
 }
@@ -259,6 +261,7 @@ async fn run_src_once(
         src_rules,
         install_dir: install_dir.to_path_buf(),
         output_dir: output_dir.to_path_buf(),
+        retry_config: daemon_config.retry.clone(),
     };
 
     info!("Polling speedrun.com for new runs");

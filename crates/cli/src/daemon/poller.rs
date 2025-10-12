@@ -135,6 +135,7 @@ mod tests {
             src_rules,
             install_dir: PathBuf::from("./factorio_installs"),
             output_dir: PathBuf::from("./daemon_runs"),
+            retry_config: crate::retry::RetryConfig::default(),
         }
     }
 

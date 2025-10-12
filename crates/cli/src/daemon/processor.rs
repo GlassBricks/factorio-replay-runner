@@ -59,7 +59,7 @@ pub async fn find_run_to_process(ctx: &RunProcessingContext) -> Result<ProcessRe
 
     let Some(run) = ctx
         .db
-        .get_next_discovered_run(&allowed_game_categories)
+        .get_next_run_to_process(&allowed_game_categories)
         .await?
     else {
         return Ok(ProcessResult::NoWork);
@@ -91,7 +91,9 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
     )
     .await;
 
-    ctx.db.process_replay_result(&run.run_id, result).await
+    ctx.db
+        .process_replay_result(&run.run_id, result, &ctx.retry_config)
+        .await
 }
 
 #[cfg(test)]
@@ -117,6 +119,7 @@ mod tests {
             src_rules,
             install_dir: PathBuf::from("/tmp/test"),
             output_dir: PathBuf::from("/tmp/test_output"),
+            retry_config: crate::retry::RetryConfig::default(),
         }
     }
 
