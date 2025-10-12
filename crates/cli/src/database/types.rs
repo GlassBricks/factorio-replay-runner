@@ -12,6 +12,15 @@ pub enum RunStatus {
     Error,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct RunFilter {
+    pub status: Option<RunStatus>,
+    pub game_id: Option<String>,
+    pub category_id: Option<String>,
+    pub limit: u32,
+    pub offset: u32,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 #[allow(dead_code)]
 pub struct Run {

@@ -14,10 +14,7 @@ mod processor;
 pub use poller::{poll_speedrun_com, poll_speedrun_com_loop};
 pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
 
-pub async fn run_daemon(
-    config: DaemonConfig,
-    src_rules: SrcRunRules,
-) -> Result<()> {
+pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
     info!("Monitoring {} game(s)", src_rules.games.len());
 
@@ -44,11 +41,7 @@ pub async fn run_daemon(
         retry_config: config.retry,
     };
 
-    let poller_task = poll_speedrun_com_loop(
-        ctx.clone(),
-        config.polling,
-        work_notify.clone(),
-    );
+    let poller_task = poll_speedrun_com_loop(ctx.clone(), config.polling, work_notify.clone());
     let processor_task = process_runs_loop(ctx, work_notify.clone());
 
     let (poller_result, processor_result) = tokio::join!(poller_task, processor_task);

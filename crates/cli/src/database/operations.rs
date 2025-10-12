@@ -1,5 +1,5 @@
 use super::connection::Database;
-use super::types::{NewRun, Run, RunStatus};
+use super::types::{NewRun, Run, RunFilter, RunStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use log::{error, info, warn};
@@ -178,6 +178,65 @@ impl Database {
         .await?;
 
         Ok(run)
+    }
+
+    pub async fn query_runs(&self, filter: RunFilter) -> Result<Vec<Run>> {
+        let mut query_parts = vec!["SELECT run_id, game_id, category_id, submitted_date, status, error_message, retry_count, next_retry_at, error_class, created_at, updated_at FROM runs WHERE 1=1".to_string()];
+        let mut conditions = Vec::new();
+
+        if filter.status.is_some() {
+            conditions.push("status = ?");
+        }
+        if filter.game_id.is_some() {
+            conditions.push("game_id = ?");
+        }
+        if filter.category_id.is_some() {
+            conditions.push("category_id = ?");
+        }
+
+        for condition in conditions {
+            query_parts.push(format!("AND {}", condition));
+        }
+
+        query_parts.push("ORDER BY submitted_date DESC".to_string());
+        query_parts.push("LIMIT ?".to_string());
+        query_parts.push("OFFSET ?".to_string());
+
+        let query_str = query_parts.join(" ");
+        let mut query = sqlx::query(&query_str);
+
+        if let Some(status) = filter.status {
+            query = query.bind(status);
+        }
+        if let Some(game_id) = filter.game_id {
+            query = query.bind(game_id);
+        }
+        if let Some(category_id) = filter.category_id {
+            query = query.bind(category_id);
+        }
+
+        query = query.bind(filter.limit).bind(filter.offset);
+
+        let rows = query.fetch_all(self.pool()).await?;
+
+        rows.iter()
+            .map(|r| {
+                Ok::<_, sqlx::Error>(Run {
+                    run_id: r.try_get("run_id")?,
+                    game_id: r.try_get("game_id")?,
+                    category_id: r.try_get("category_id")?,
+                    submitted_date: r.try_get("submitted_date")?,
+                    status: r.try_get("status")?,
+                    error_message: r.try_get("error_message")?,
+                    retry_count: r.try_get("retry_count")?,
+                    next_retry_at: r.try_get("next_retry_at")?,
+                    error_class: r.try_get("error_class")?,
+                    created_at: r.try_get("created_at")?,
+                    updated_at: r.try_get("updated_at")?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 
     pub async fn get_next_run_to_process(
@@ -909,6 +968,145 @@ mod tests {
         let actual_retry_at = run.next_retry_at.unwrap();
         let diff = (actual_retry_at - expected_retry_at).num_seconds().abs();
         assert!(diff < 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_basic() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let filter = RunFilter {
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 3);
+        assert_eq!(runs[0].run_id, "run3");
+        assert_eq!(runs[1].run_id, "run2");
+        assert_eq!(runs[2].run_id, "run1");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_status_filter() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.mark_run_passed("run1").await.unwrap();
+
+        let filter = RunFilter {
+            status: Some(RunStatus::Passed),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run1");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_game_category_filter() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let filter = RunFilter {
+            game_id: Some("game1".to_string()),
+            category_id: Some("cat1".to_string()),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run1");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_limit_and_offset() {
+        let db = Database::in_memory().await.unwrap();
+
+        for i in 1..=5 {
+            db.insert_run(NewRun::new(
+                format!("run{}", i),
+                "game1",
+                "cat1",
+                format!("2024-01-0{}T00:00:00Z", i).parse().unwrap(),
+            ))
+            .await
+            .unwrap();
+        }
+
+        let filter = RunFilter {
+            limit: 2,
+            offset: 1,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].run_id, "run4");
+        assert_eq!(runs[1].run_id, "run3");
     }
 
     #[tokio::test]

@@ -21,6 +21,7 @@ mod config;
 mod daemon;
 mod database;
 mod error;
+mod query;
 mod retry;
 mod run_processing;
 mod run_replay;
@@ -39,6 +40,7 @@ enum Commands {
     Run(RunReplayOnFileArgs),
     RunSrc(RunReplayFromSrcArgs),
     Daemon(DaemonArgs),
+    Query(query::QueryArgs),
 }
 
 #[derive(Args)]
@@ -108,6 +110,10 @@ async fn main() -> Result<()> {
         }
         Commands::Daemon(sub_args) => {
             cli_daemon(sub_args).await?;
+            Ok(())
+        }
+        Commands::Query(sub_args) => {
+            query::handle_query_command(sub_args).await?;
             Ok(())
         }
     }

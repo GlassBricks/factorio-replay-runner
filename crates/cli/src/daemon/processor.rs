@@ -12,10 +12,7 @@ pub enum ProcessResult {
     NoWork,
 }
 
-pub async fn process_runs_loop(
-    ctx: RunProcessingContext,
-    work_notify: Arc<Notify>,
-) -> Result<()> {
+pub async fn process_runs_loop(ctx: RunProcessingContext, work_notify: Arc<Notify>) -> Result<()> {
     info!("Starting run processor (event-driven)");
 
     loop {
