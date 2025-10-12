@@ -48,16 +48,12 @@ pub struct SrcRunRules {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameConfig {
-    #[serde(default)]
-    pub name: Option<String>,
     pub expected_mods: ExpectedMods,
     pub categories: HashMap<String, CategoryConfig>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct CategoryConfig {
-    #[serde(default)]
-    pub name: Option<String>,
     #[serde(flatten)]
     pub run_rules: RunRules,
 }

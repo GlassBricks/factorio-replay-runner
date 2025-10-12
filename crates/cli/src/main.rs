@@ -188,17 +188,7 @@ async fn run_src(
     let (fetched_run_id, game_id, category_id, submitted_date) =
         run_processing::fetch_run_details(run_id).await?;
 
-    let game_config = rules
-        .games
-        .get(&game_id)
-        .ok_or_else(|| anyhow::anyhow!("No rules configured for game ID: {}", game_id))?;
-    let category_config = game_config
-        .categories
-        .get(&category_id)
-        .ok_or_else(|| anyhow::anyhow!("No rules configured for category ID: {}", category_id))?;
-    let game_name = game_config.name.as_deref().unwrap_or(&game_id);
-    let category_name = category_config.name.as_deref().unwrap_or(&category_id);
-    info!("Game: {}, Category: {}", game_name, category_name);
+    info!("Game: {}, Category: {}", game_id, category_id);
     let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
 
     let new_run =
