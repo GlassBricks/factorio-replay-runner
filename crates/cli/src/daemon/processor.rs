@@ -33,7 +33,7 @@ pub async fn process_runs_loop(
                 Ok(ProcessResult::NoWork) => break,
                 Err(e) => {
                     error!("Run processing iteration failed: {:#}", e);
-                    break;
+                    continue;
                 }
             }
         }
@@ -60,7 +60,13 @@ pub async fn find_run_to_process(
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ProcessResult> {
-    let run = match db.get_next_discovered_run().await? {
+    let allowed_game_categories = extract_game_category_pairs(game_configs);
+
+    if allowed_game_categories.is_empty() {
+        return Ok(ProcessResult::NoWork);
+    }
+
+    let run = match db.get_next_discovered_run(&allowed_game_categories).await? {
         Some(run) => run,
         None => return Ok(ProcessResult::NoWork),
     };
@@ -75,6 +81,20 @@ pub async fn find_run_to_process(
 
     process_run(db, run, run_rules, expected_mods, install_dir, output_dir).await?;
     Ok(ProcessResult::Processed)
+}
+
+fn extract_game_category_pairs(
+    game_configs: &HashMap<String, GameConfig>,
+) -> Vec<(String, String)> {
+    game_configs
+        .iter()
+        .flat_map(|(game_id, config)| {
+            config
+                .categories
+                .keys()
+                .map(|cat_id| (game_id.clone(), cat_id.clone()))
+        })
+        .collect()
 }
 
 async fn process_run(
@@ -141,13 +161,7 @@ mod tests {
 
         let result = find_run_to_process(&db, &game_configs, &install_dir, &output_dir).await;
 
-        assert!(result.is_err());
-        let error_msg = result.unwrap_err().to_string();
-        assert!(
-            error_msg.contains("No configuration found")
-                || error_msg.contains("Failed to resolve rules"),
-            "Unexpected error message: {}",
-            error_msg
-        );
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), ProcessResult::NoWork));
     }
 }

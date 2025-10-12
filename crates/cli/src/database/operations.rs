@@ -105,10 +105,17 @@ impl Database {
         Ok(run)
     }
 
-    pub async fn get_next_discovered_run(&self) -> Result<Option<Run>> {
+    pub async fn get_next_discovered_run(
+        &self,
+        allowed_game_categories: &[(String, String)],
+    ) -> Result<Option<Run>> {
         let status = RunStatus::Discovered;
 
-        let run = sqlx::query_as!(
+        (!allowed_game_categories.is_empty())
+            .then_some(())
+            .ok_or_else(|| anyhow::anyhow!("No game/category configurations provided"))?;
+
+        let runs = sqlx::query_as!(
             Run,
             r#"
             SELECT run_id, game_id, category_id,
@@ -120,12 +127,17 @@ impl Database {
             FROM runs
             WHERE status = ?
             ORDER BY submitted_date ASC
-            LIMIT 1
             "#,
             status
         )
-        .fetch_optional(self.pool())
+        .fetch_all(self.pool())
         .await?;
+
+        let run = runs.into_iter().find(|run| {
+            allowed_game_categories
+                .iter()
+                .any(|(game_id, cat_id)| run.game_id == *game_id && run.category_id == *cat_id)
+        });
 
         Ok(run)
     }
@@ -251,8 +263,13 @@ mod tests {
         .await
         .unwrap();
 
-        let next_run = db.get_next_discovered_run().await.unwrap().unwrap();
+        let allowed = vec![("game_id_1".to_string(), "cat_id_1".to_string())];
+        let next_run = db.get_next_discovered_run(&allowed).await.unwrap().unwrap();
         assert_eq!(next_run.run_id, "run2");
+
+        let filtered_out = vec![("game_id_1".to_string(), "cat_id_2".to_string())];
+        let no_run = db.get_next_discovered_run(&filtered_out).await.unwrap();
+        assert!(no_run.is_none());
     }
 
     #[tokio::test]
