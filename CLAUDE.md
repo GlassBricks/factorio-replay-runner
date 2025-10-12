@@ -45,18 +45,16 @@ Main entry point that orchestrates everything:
 - `run_replay.rs`: core replay execution logic
 - `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig`, `DaemonConfig` - defines validation rules and configuration
 - `error.rs`: error classification system with `ClassifiedError` and `ErrorClass`
-- `speedrun_api.rs`: speedrun.com API client with typed `ApiError`
-- `run_processing.rs`: downloads and runs replays, returns `ClassifiedError`
-- `src_integration.rs`: speedrun.com integration
-- `run_lookup.rs`: queries speedrun.com API for new verified runs in a game/category
+- `speedrun_api.rs`: speedrun.com API client with typed `ApiError`, speedrun.com integration
+- `run_processing.rs`: downloads and runs replays from speedrun.com, returns `ClassifiedError`
 - `daemon.rs`: daemon orchestration with graceful shutdown handling
-  - `poller.rs`: polls speedrun.com periodically for new runs
-  - `processor.rs`: processes pending runs from database queue
+  - `daemon/poller.rs`: polls speedrun.com periodically for new runs
+  - `daemon/processor.rs`: processes pending runs from database queue
 - `database/`: SQLite database infrastructure for run tracking
   - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
   - `connection.rs`: `Database` wrapper around sqlx pool with migrations
   - `operations.rs`: database CRUD operations for runs and poll state
-  - `migrations/`: SQL migration files for schema versioning
+- `migrations/`: SQL migration files for schema versioning (at crate level, not in src/)
 - Main commands:
   - `run`: Run replay on local save file with rules
   - `run-src`: Run replay fetched from speedrun.com
@@ -103,16 +101,6 @@ The codebase uses a type-based error classification system:
    - `ClassifiedError`: Wraps errors with classification
    - `ErrorClass`: `Final` (submitter fault), `Retryable` (infrastructure), `RateLimited` (with optional retry delay)
    - Each typed error has `From<ErrorType> for ClassifiedError` implementation
-
-3. **Benefits**:
-   - Type-safe error propagation within each crate
-   - Classification logic centralized in one place
-   - No fragile string parsing or heuristics
-   - Each crate documents its failure modes explicitly
-   - Better error messages with structured information
-   - Compiler enforces complete classification coverage
-
-See `docs/error-classification.md` for complete documentation.
 
 ## Configuration Files
 
