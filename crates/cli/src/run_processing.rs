@@ -18,12 +18,13 @@ use crate::database::types::NewRun;
 use crate::run_replay::{ReplayReport, run_replay};
 use crate::speedrun_api::{RunsQuery, SpeedrunClient};
 
-pub struct RunProcessor {
+pub struct RunProcessor<'a> {
     downloader: FileDownloader,
+    client: &'a SpeedrunClient,
 }
 
-impl RunProcessor {
-    pub fn new() -> Result<Self> {
+impl<'a> RunProcessor<'a> {
+    pub fn new(client: &'a SpeedrunClient) -> Result<Self> {
         if std::env::var("AUTO_DOWNLOAD_RUNS").is_err() {
             anyhow::bail!(
                 "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
@@ -36,13 +37,12 @@ impl RunProcessor {
             .add_service(SpeedrunService::new())
             .build();
 
-        Ok(Self { downloader })
+        Ok(Self { downloader, client })
     }
 
     async fn fetch_run_description(&self, run_id: &str) -> Result<String> {
         info!("Fetching run data for {}", run_id);
-        let client = SpeedrunClient::new()?;
-        let run = client.get_run(run_id).await?;
+        let run = self.client.get_run(run_id).await?;
 
         let description = run
             .comment
@@ -80,15 +80,11 @@ impl RunProcessor {
     }
 }
 
-impl Default for RunProcessor {
-    fn default() -> Self {
-        Self::new().expect("Failed to create RunProcessor")
-    }
-}
-
-pub async fn fetch_run_details(run_id: &str) -> Result<(String, String, String, DateTime<Utc>)> {
+pub async fn fetch_run_details(
+    client: &SpeedrunClient,
+    run_id: &str,
+) -> Result<(String, String, String, DateTime<Utc>)> {
     info!("Fetching run details for {}", run_id);
-    let client = SpeedrunClient::new()?;
     let run = client.get_run(run_id).await?;
 
     let game_id = run.game;
@@ -103,6 +99,7 @@ pub async fn fetch_run_details(run_id: &str) -> Result<(String, String, String, 
 }
 
 pub async fn poll_game_category(
+    client: &SpeedrunClient,
     game_id: &str,
     category_id: &str,
     cutoff_date: &DateTime<Utc>,
@@ -111,8 +108,6 @@ pub async fn poll_game_category(
         "Polling for new runs: game={}, category={}",
         game_id, category_id
     );
-
-    let client = SpeedrunClient::new()?;
 
     let query = RunsQuery::new()
         .game(game_id)
@@ -137,6 +132,7 @@ pub async fn poll_game_category(
 }
 
 pub async fn download_and_run_replay(
+    client: &SpeedrunClient,
     run_id: &str,
     run_rules: &RunRules,
     expected_mods: &ExpectedMods,
@@ -149,7 +145,7 @@ pub async fn download_and_run_replay(
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)?;
 
-    let mut processor = RunProcessor::new()?;
+    let mut processor = RunProcessor::new(client)?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
 
     let install_dir = FactorioInstallDir::new_or_create(install_dir)?;

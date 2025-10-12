@@ -184,12 +184,15 @@ async fn run_src(
 ) -> Result<ReplayReport> {
     let rules = load_src_rules(game_rules).await?;
     let db = database::connection::Database::new(database).await?;
+    let client = speedrun_api::SpeedrunClient::new()?;
+    let speedrun_ops = speedrun_api::SpeedrunOps::new(&client);
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
     let (fetched_run_id, game_id, category_id, submitted_date) =
-        run_processing::fetch_run_details(run_id).await?;
+        run_processing::fetch_run_details(&client, run_id).await?;
 
-    info!("Game: {}, Category: {}", game_id, category_id);
+    let game_category = speedrun_ops.format_game_category(&game_id, &category_id).await;
+    info!("Game: {}", game_category);
     let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
 
     let new_run =
@@ -209,6 +212,7 @@ async fn run_src(
     db.mark_run_processing(&fetched_run_id).await?;
 
     let result = download_and_run_replay(
+        &client,
         &fetched_run_id,
         run_rules,
         expected_mods,
@@ -234,16 +238,18 @@ async fn run_src_once(
         .context("Failed to load daemon config")?;
     let src_rules = load_src_rules(game_rules).await?;
     let db = database::connection::Database::new(database).await?;
+    let client = speedrun_api::SpeedrunClient::new()?;
+    let speedrun_ops = speedrun_api::SpeedrunOps::new(&client);
 
     std::fs::create_dir_all(install_dir)?;
     std::fs::create_dir_all(output_dir)?;
 
     info!("Polling speedrun.com for new runs");
     let work_notify = Arc::new(tokio::sync::Notify::new());
-    daemon::poll_speedrun_com(&db, &daemon_config, &src_rules.games, &work_notify).await?;
+    daemon::poll_speedrun_com(&db, &daemon_config, &src_rules.games, &speedrun_ops, &work_notify).await?;
 
     info!("Processing one run from queue");
-    match daemon::find_run_to_process(&db, &src_rules.games, install_dir, output_dir).await? {
+    match daemon::find_run_to_process(&db, &src_rules.games, &client, install_dir, output_dir).await? {
         daemon::ProcessResult::Processed => {
             info!("Successfully processed one run");
             Ok(0)

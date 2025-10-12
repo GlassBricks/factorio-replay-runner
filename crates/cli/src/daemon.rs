@@ -7,6 +7,7 @@ use tokio::sync::Notify;
 
 use crate::config::{DaemonConfig, GameConfig};
 use crate::database::connection::Database;
+use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
 mod poller;
 mod processor;
@@ -26,6 +27,9 @@ pub async fn run_daemon(
         .await
         .context("Failed to initialize database")?;
 
+    let client = SpeedrunClient::new()?;
+    let speedrun_ops = SpeedrunOps::new(&client);
+
     std::fs::create_dir_all(&config.install_dir)?;
     std::fs::create_dir_all(&config.output_dir)?;
 
@@ -37,6 +41,7 @@ pub async fn run_daemon(
         db.clone(),
         config.clone(),
         game_configs.clone(),
+        speedrun_ops,
         work_notify.clone(),
         coordinator.subscribe(),
     );
@@ -44,6 +49,7 @@ pub async fn run_daemon(
     let processor_task = process_runs_loop(
         db,
         game_configs,
+        client,
         config.install_dir.clone(),
         config.output_dir.clone(),
         work_notify,

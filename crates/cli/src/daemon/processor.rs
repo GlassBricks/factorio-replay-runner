@@ -9,6 +9,7 @@ use crate::config::{GameConfig, SrcRunRules};
 use crate::database::connection::Database;
 use crate::database::types::Run;
 use crate::run_processing::download_and_run_replay;
+use crate::speedrun_api::SpeedrunClient;
 
 #[derive(Debug)]
 pub enum ProcessResult {
@@ -19,6 +20,7 @@ pub enum ProcessResult {
 pub async fn process_runs_loop(
     db: Database,
     game_configs: HashMap<String, GameConfig>,
+    client: SpeedrunClient,
     install_dir: PathBuf,
     output_dir: PathBuf,
     work_notify: Arc<Notify>,
@@ -28,7 +30,7 @@ pub async fn process_runs_loop(
 
     loop {
         loop {
-            match find_run_to_process(&db, &game_configs, &install_dir, &output_dir).await {
+            match find_run_to_process(&db, &game_configs, &client, &install_dir, &output_dir).await {
                 Ok(ProcessResult::Processed) => continue,
                 Ok(ProcessResult::NoWork) => break,
                 Err(e) => {
@@ -57,6 +59,7 @@ pub async fn process_runs_loop(
 pub async fn find_run_to_process(
     db: &Database,
     game_configs: &HashMap<String, GameConfig>,
+    client: &SpeedrunClient,
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ProcessResult> {
@@ -79,7 +82,7 @@ pub async fn find_run_to_process(
         .resolve_rules(&run.game_id, &run.category_id)
         .context("Failed to resolve rules for run")?;
 
-    process_run(db, run, run_rules, expected_mods, install_dir, output_dir).await?;
+    process_run(db, run, client, run_rules, expected_mods, install_dir, output_dir).await?;
     Ok(ProcessResult::Processed)
 }
 
@@ -100,6 +103,7 @@ fn extract_game_category_pairs(
 async fn process_run(
     db: &Database,
     run: Run,
+    client: &SpeedrunClient,
     run_rules: &crate::config::RunRules,
     expected_mods: &factorio_manager::expected_mods::ExpectedMods,
     install_dir: &Path,
@@ -114,6 +118,7 @@ async fn process_run(
     info!("Processing run: {}", run_id);
 
     let result = download_and_run_replay(
+        client,
         &run.run_id,
         run_rules,
         expected_mods,
@@ -135,10 +140,11 @@ mod tests {
     async fn test_poll_runs_no_discovered_runs() {
         let db = Database::in_memory().await.unwrap();
         let game_configs = HashMap::new();
+        let client = SpeedrunClient::new().unwrap();
         let install_dir = std::path::PathBuf::from("/tmp/test");
         let output_dir = std::path::PathBuf::from("/tmp/test_output");
 
-        let result = find_run_to_process(&db, &game_configs, &install_dir, &output_dir).await;
+        let result = find_run_to_process(&db, &game_configs, &client, &install_dir, &output_dir).await;
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), ProcessResult::NoWork));
@@ -148,6 +154,7 @@ mod tests {
     async fn test_poll_runs_missing_config() {
         let db = Database::in_memory().await.unwrap();
         let game_configs = HashMap::new();
+        let client = SpeedrunClient::new().unwrap();
         let install_dir = std::path::PathBuf::from("/tmp/test");
         let output_dir = std::path::PathBuf::from("/tmp/test_output");
 
@@ -159,7 +166,7 @@ mod tests {
         );
         db.insert_run(new_run).await.unwrap();
 
-        let result = find_run_to_process(&db, &game_configs, &install_dir, &output_dir).await;
+        let result = find_run_to_process(&db, &game_configs, &client, &install_dir, &output_dir).await;
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), ProcessResult::NoWork));

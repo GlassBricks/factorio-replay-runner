@@ -8,11 +8,13 @@ use tokio::sync::{Notify, watch};
 use crate::config::{DaemonConfig, GameConfig};
 use crate::database::connection::Database;
 use crate::run_processing::poll_game_category;
+use crate::speedrun_api::SpeedrunOps;
 
 pub async fn poll_speedrun_com_loop(
     db: Database,
     config: DaemonConfig,
     game_configs: HashMap<String, GameConfig>,
+    speedrun_ops: SpeedrunOps,
     work_notify: Arc<Notify>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -24,7 +26,9 @@ pub async fn poll_speedrun_com_loop(
     );
 
     loop {
-        if let Err(e) = poll_speedrun_com(&db, &config, &game_configs, &work_notify).await {
+        if let Err(e) =
+            poll_speedrun_com(&db, &config, &game_configs, &speedrun_ops, &work_notify).await
+        {
             error!("Speedrun.com poll iteration failed: {:#}", e);
         }
 
@@ -42,18 +46,25 @@ pub async fn poll_speedrun_com(
     db: &Database,
     config: &DaemonConfig,
     game_configs: &HashMap<String, GameConfig>,
+    speedrun_ops: &SpeedrunOps,
     work_notify: &Notify,
 ) -> Result<()> {
     let cutoff_date = DateTime::parse_from_rfc3339(&config.cutoff_date)?.with_timezone(&Utc);
 
     for (game_id, game_config) in game_configs {
         for category_id in game_config.categories.keys() {
-            if let Err(e) = poll_category(db, game_id, category_id, cutoff_date, work_notify).await
+            if let Err(e) = poll_category(
+                db,
+                game_id,
+                category_id,
+                cutoff_date,
+                speedrun_ops,
+                work_notify,
+            )
+            .await
             {
-                error!(
-                    "Failed to poll game={} category={}: {:#}",
-                    game_id, category_id, e
-                );
+                let game_category = speedrun_ops.format_game_category(game_id, category_id).await;
+                error!("Failed to poll {}: {:#}", game_category, e);
             }
         }
     }
@@ -66,6 +77,7 @@ async fn poll_category(
     game_id: &str,
     category_id: &str,
     cutoff_date: DateTime<Utc>,
+    speedrun_ops: &SpeedrunOps,
     work_notify: &Notify,
 ) -> Result<()> {
     let latest_submitted_date = db
@@ -73,7 +85,7 @@ async fn poll_category(
         .await?
         .unwrap_or(cutoff_date);
 
-    let new_runs = poll_game_category(game_id, category_id, &latest_submitted_date)
+    let new_runs = poll_game_category(&speedrun_ops.client, game_id, category_id, &latest_submitted_date)
         .await
         .context("Failed to poll game category from API")?;
 
@@ -86,9 +98,10 @@ async fn poll_category(
     }
 
     if discovered_count > 0 {
+        let game_category = speedrun_ops.format_game_category(game_id, category_id).await;
         info!(
-            "Discovered {} new run(s) for game={} category={}",
-            discovered_count, game_id, category_id
+            "Discovered {} new run(s) for {}",
+            discovered_count, game_category
         );
         work_notify.notify_one();
     }
@@ -116,6 +129,7 @@ async fn interruptible_sleep(
 mod tests {
     use super::*;
     use crate::database::connection::Database;
+    use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
     #[tokio::test]
     async fn test_poll_with_no_game_configs() {
@@ -130,8 +144,11 @@ mod tests {
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),
         };
         let work_notify = Notify::new();
+        let client = SpeedrunClient::new().unwrap();
+        let speedrun_ops = SpeedrunOps::new(&client);
 
-        let result = poll_speedrun_com(&db, &config, &game_configs, &work_notify).await;
+        let result =
+            poll_speedrun_com(&db, &config, &game_configs, &speedrun_ops, &work_notify).await;
 
         assert!(result.is_ok());
     }
