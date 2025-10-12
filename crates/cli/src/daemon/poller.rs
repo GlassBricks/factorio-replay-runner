@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::collections::HashMap;
@@ -87,7 +87,7 @@ async fn poll_category(
 
     let new_runs = poll_game_category(&speedrun_ops.client, game_id, category_id, &latest_submitted_date)
         .await
-        .map_err(|e| anyhow::Error::new(e).context("Failed to poll game category from API"))?;
+        .context("Failed to poll game category from API")?;
 
     let discovered_count = new_runs.len();
 
