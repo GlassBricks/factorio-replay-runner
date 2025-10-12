@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::time::Duration;
 use std::{fs::File, io::Write, path::Path};
 
 use anyhow::Result;
@@ -15,6 +16,7 @@ use factorio_manager::{
 use futures::{AsyncBufReadExt, Stream, StreamExt};
 use log::{debug, info};
 use replay_script::{MsgLevel, ReplayMsg};
+use tokio::time::{Instant, sleep};
 
 use crate::config::RunRules;
 
@@ -130,10 +132,32 @@ async fn record_output(
     let mut msgs = msg_stream(process);
 
     let mut max_level = MsgLevel::Info;
+    let timeout_duration = Duration::from_secs(300);
+    let mut last_message_time = Instant::now();
 
-    while let Some(msg) = msgs.next().await {
-        writeln!(log_file, "{}", msg)?;
-        max_level = max_level.max(msg.level);
+    loop {
+        let time_since_last_msg = last_message_time.elapsed();
+        let remaining_time = timeout_duration
+            .checked_sub(time_since_last_msg)
+            .unwrap_or(Duration::ZERO);
+
+        tokio::select! {
+            msg = msgs.next() => {
+                match msg {
+                    Some(msg) => {
+                        writeln!(log_file, "{}", msg)?;
+                        max_level = max_level.max(msg.level);
+                        last_message_time = Instant::now();
+                    }
+                    None => break,
+                }
+            }
+            _ = sleep(remaining_time), if remaining_time > Duration::ZERO => {
+                drop(msgs);
+                process.terminate();
+                return Err(FactorioError::ReplayTimeout);
+            }
+        }
     }
     Ok(max_level)
 }

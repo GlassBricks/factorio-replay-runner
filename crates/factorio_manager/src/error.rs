@@ -48,6 +48,9 @@ pub enum FactorioError {
     #[error("Factorio process exited unsuccessfully with exit code: {}", exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string()))]
     ProcessExitedUnsuccessfully { exit_code: Option<i32> },
 
+    #[error("Replay timeout: no log messages produced for 5 minutes")]
+    ReplayTimeout,
+
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 }

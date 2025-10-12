@@ -109,6 +109,14 @@ impl FactorioProcess {
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         self.child.status().await
     }
+
+    pub fn terminate(&mut self) {
+        let pid = self.child.id();
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGINT);
+            libc::kill(pid as libc::pid_t, libc::SIGINT);
+        }
+    }
 }
 
 impl Drop for FactorioProcess {

@@ -60,6 +60,7 @@ impl From<FactorioError> for ClassifiedError {
             FactorioError::ProcessSpawnFailed(_) => ErrorClass::Retryable,
             FactorioError::ProcessExitedUnsuccessfully { .. } => ErrorClass::Retryable,
             FactorioError::ModInfoReadFailed(_) => ErrorClass::Retryable,
+            FactorioError::ReplayTimeout => ErrorClass::Final,
             FactorioError::IoError(_) => ErrorClass::Retryable,
         };
         ClassifiedError::from_error(class, &e)
