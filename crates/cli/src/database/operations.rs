@@ -6,7 +6,6 @@ use log::{error, info, warn};
 use replay_script::MsgLevel;
 use sqlx::Row;
 
-use crate::config::RunRules;
 use crate::error::ClassifiedError;
 use crate::retry::{RetryConfig, calculate_next_retry, error_class_to_string};
 use crate::run_replay::ReplayReport;
@@ -271,17 +270,16 @@ impl Database {
         &self,
         run_id: &str,
         result: Result<ReplayReport, ClassifiedError>,
-        run_rules: &RunRules,
         retry_config: &RetryConfig,
     ) -> Result<()> {
         match result {
             Ok(report) => {
                 self.clear_retry_fields(run_id).await?;
 
-                if run_rules.replay_scripts.win_on_scenario_finished && !report.exited_via_script {
+                if report.win_condition_not_completed {
                     self.mark_run_failed(run_id).await?;
                     warn!(
-                        "Run {} failed: win_on_scenario_finished enabled but scenario never finished",
+                        "Run {} failed: win_on_scenario_finished enabled but scenario never completed",
                         run_id
                     );
                     return Ok(());
@@ -349,13 +347,6 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn default_run_rules() -> RunRules {
-        RunRules {
-            expected_mods_override: None,
-            replay_scripts: replay_script::ReplayScripts::default(),
-        }
-    }
 
     #[tokio::test]
     async fn test_insert_and_get_run() {
@@ -704,9 +695,8 @@ mod tests {
             message: "Network error".to_string(),
         };
         let config = RetryConfig::default();
-        let rules = default_run_rules();
 
-        db.process_replay_result("run_retry_result", Err(error), &rules, &config)
+        db.process_replay_result("run_retry_result", Err(error), &config)
             .await
             .unwrap();
 
@@ -733,9 +723,8 @@ mod tests {
             message: "Invalid save file".to_string(),
         };
         let config = RetryConfig::default();
-        let rules = default_run_rules();
 
-        db.process_replay_result("run_final", Err(error), &rules, &config)
+        db.process_replay_result("run_final", Err(error), &config)
             .await
             .unwrap();
 
@@ -767,12 +756,11 @@ mod tests {
 
         let report = ReplayReport {
             max_msg_level: MsgLevel::Info,
-            exited_via_script: true,
+            win_condition_not_completed: false,
         };
         let config = RetryConfig::default();
-        let rules = default_run_rules();
 
-        db.process_replay_result("run_success_clear", Ok(report), &rules, &config)
+        db.process_replay_result("run_success_clear", Ok(report), &config)
             .await
             .unwrap();
 
@@ -800,9 +788,8 @@ mod tests {
             message: "Temporary failure".to_string(),
         };
         let config = RetryConfig::default();
-        let rules = default_run_rules();
 
-        db.process_replay_result("run_e2e", Err(error), &rules, &config)
+        db.process_replay_result("run_e2e", Err(error), &config)
             .await
             .unwrap();
 
@@ -826,9 +813,9 @@ mod tests {
 
         let report = ReplayReport {
             max_msg_level: MsgLevel::Info,
-            exited_via_script: true,
+            win_condition_not_completed: false,
         };
-        db.process_replay_result("run_e2e", Ok(report), &rules, &config)
+        db.process_replay_result("run_e2e", Ok(report), &config)
             .await
             .unwrap();
 
@@ -861,9 +848,8 @@ mod tests {
                 class: ErrorClass::Retryable,
                 message: format!("Failure attempt {}", attempt + 1),
             };
-            let rules = default_run_rules();
 
-            db.process_replay_result("run_max_attempts", Err(error), &rules, &config)
+            db.process_replay_result("run_max_attempts", Err(error), &config)
                 .await
                 .unwrap();
 
@@ -908,9 +894,8 @@ mod tests {
             message: "Rate limited".to_string(),
         };
         let config = RetryConfig::default();
-        let rules = default_run_rules();
 
-        db.process_replay_result("run_rate_limited", Err(error), &rules, &config)
+        db.process_replay_result("run_rate_limited", Err(error), &config)
             .await
             .unwrap();
 

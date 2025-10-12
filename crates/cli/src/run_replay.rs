@@ -23,7 +23,7 @@ use crate::config::RunRules;
 #[derive(Clone, Copy)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
-    pub exited_via_script: bool,
+    pub win_condition_not_completed: bool,
 }
 
 impl ReplayReport {
@@ -52,7 +52,7 @@ pub async fn run_replay(
     let mut instance = get_instance(install_dir, save_file).await?;
     perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
     let installed_save_path = install_replay_script(save_path, save_file, rules).await?;
-    run_and_log_replay(&instance, &installed_save_path, log_path).await
+    run_and_log_replay(&instance, &installed_save_path, log_path, rules).await
 }
 
 async fn get_instance(
@@ -92,6 +92,7 @@ async fn run_and_log_replay(
     instance: &FactorioInstance,
     installed_save_path: &Path,
     log_path: &Path,
+    rules: &RunRules,
 ) -> Result<ReplayReport, FactorioError> {
     info!("Starting replay");
     info!("Writing to: {}", log_path.display());
@@ -107,9 +108,20 @@ async fn run_and_log_replay(
 
     copy_factorio_log(instance, log_path)?;
 
+    let win_condition_not_completed =
+        rules.replay_scripts.win_on_scenario_finished && !exited_via_script;
+
+    if win_condition_not_completed {
+        let mut log_file = File::options().append(true).open(log_path)?;
+        writeln!(
+            log_file,
+            "VERIFICATION FAILED: win_on_scenario_finished enabled but scenario never completed"
+        )?;
+    }
+
     Ok(ReplayReport {
         max_msg_level,
-        exited_via_script,
+        win_condition_not_completed,
     })
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use log::{error, info};
+use log::{debug, error, info};
 use std::sync::Arc;
 use tokio::sync::{Notify, watch};
 
