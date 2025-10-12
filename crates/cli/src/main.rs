@@ -191,7 +191,9 @@ async fn run_src(
     let (fetched_run_id, game_id, category_id, submitted_date) =
         run_processing::fetch_run_details(&client, run_id).await?;
 
-    let game_category = speedrun_ops.format_game_category(&game_id, &category_id).await;
+    let game_category = speedrun_ops
+        .format_game_category(&game_id, &category_id)
+        .await;
     info!("Game: {}", game_category);
     let (run_rules, expected_mods) = rules.resolve_rules(&game_id, &category_id)?;
 
@@ -246,10 +248,19 @@ async fn run_src_once(
 
     info!("Polling speedrun.com for new runs");
     let work_notify = Arc::new(tokio::sync::Notify::new());
-    daemon::poll_speedrun_com(&db, &daemon_config, &src_rules.games, &speedrun_ops, &work_notify).await?;
+    daemon::poll_speedrun_com(
+        &db,
+        &daemon_config,
+        &src_rules.games,
+        &speedrun_ops,
+        &work_notify,
+    )
+    .await?;
 
     info!("Processing one run from queue");
-    match daemon::find_run_to_process(&db, &src_rules.games, &client, install_dir, output_dir).await? {
+    match daemon::find_run_to_process(&db, &src_rules.games, &client, install_dir, output_dir)
+        .await?
+    {
         daemon::ProcessResult::Processed => {
             info!("Successfully processed one run");
             Ok(0)

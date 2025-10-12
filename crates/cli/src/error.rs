@@ -4,6 +4,8 @@ use std::time::Duration;
 use factorio_manager::error::FactorioError;
 use zip_downloader::DownloadError;
 
+use crate::speedrun_api::ApiError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorClass {
     Final,
@@ -58,6 +60,18 @@ impl From<FactorioError> for ClassifiedError {
             FactorioError::ProcessSpawnFailed(_) => ErrorClass::Retryable,
             FactorioError::ModInfoReadFailed(_) => ErrorClass::Retryable,
             FactorioError::IoError(_) => ErrorClass::Retryable,
+        };
+        ClassifiedError::from_error(class, &e)
+    }
+}
+
+impl From<ApiError> for ClassifiedError {
+    fn from(e: ApiError) -> Self {
+        let class = match &e {
+            ApiError::NetworkError(_) => ErrorClass::Retryable,
+            ApiError::NotFound(_) => ErrorClass::Final,
+            ApiError::ParseError(_) => ErrorClass::Retryable,
+            ApiError::MissingField(_) => ErrorClass::Final,
         };
         ClassifiedError::from_error(class, &e)
     }

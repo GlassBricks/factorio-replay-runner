@@ -341,18 +341,18 @@ impl From<ApiError> for ClassifiedError {
 7. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<FactorioError> for ClassifiedError with match on all variants.
 
-### Phase 4: Add ApiError
+### Phase 4: Add ApiError ✓
 
-1. **Define `ApiError` in `cli/src/speedrun_api.rs`**
+1. **Define `ApiError` in `cli/src/speedrun_api.rs`** ✓
    Add ApiError enum with NetworkError, NotFound, ParseError, MissingField variants.
 
-2. **Update `cli/src/speedrun_api.rs` functions**
+2. **Update `cli/src/speedrun_api.rs` functions** ✓
    Replace Context errors: HTTP client build failures become NetworkError (wrapping reqwest error), send failures become NetworkError (with context), non-success status becomes NotFound (wrapping status code info), JSON parse failures become ParseError (wrapping serde error), missing comment/submitted fields become MissingField (with field name string).
 
-3. **Update `cli/src/run_processing.rs`**
-   Update fetch_run_description to return ApiError::MissingField when comment is missing, update poll_game_category to wrap datetime parse failures in ApiError::ParseError.
+3. **Update `cli/src/run_processing.rs`** ✓
+   Update fetch_run_description to return ApiError::MissingField when comment is missing, fetch_run_details to return ApiError::MissingField when submitted date is missing, poll_game_category returns typed ApiError from all API calls. Callers (main.rs, daemon/poller.rs) convert ApiError to anyhow::Error for compatibility with existing anyhow-based error handling.
 
-4. **Add classification impl in `cli/src/error.rs`**
+4. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<ApiError> for ClassifiedError with match on all variants.
 
 ### Phase 5: Wire Up in CLI

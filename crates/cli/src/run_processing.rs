@@ -17,7 +17,7 @@ use zip_downloader::services::speedrun::SpeedrunService;
 use crate::config::RunRules;
 use crate::database::types::NewRun;
 use crate::run_replay::{ReplayReport, run_replay};
-use crate::speedrun_api::{RunsQuery, SpeedrunClient};
+use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient};
 
 const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
 
@@ -43,14 +43,13 @@ impl<'a> RunProcessor<'a> {
         Ok(Self { downloader, client })
     }
 
-    async fn fetch_run_description(&self, run_id: &str) -> Result<String> {
+    async fn fetch_run_description(&self, run_id: &str) -> Result<String, ApiError> {
         info!("Fetching run data for {}", run_id);
         let run = self.client.get_run(run_id).await?;
 
-        let description = run
-            .comment
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Comment with link needed for run {}", run_id))?;
+        let description = run.comment.as_ref().ok_or_else(|| {
+            ApiError::MissingField(format!("Comment with link needed for run {}", run_id))
+        })?;
 
         Ok(description.to_string())
     }
@@ -95,7 +94,7 @@ pub async fn fetch_run_details(
     let run_id = run.id;
     let submitted_date = run
         .submitted
-        .ok_or_else(|| anyhow::anyhow!("Run has no submitted date"))?;
+        .ok_or_else(|| ApiError::MissingField("Run has no submitted date".to_string()))?;
     let submitted_date = crate::speedrun_api::parse_datetime(&submitted_date)?;
 
     Ok((run_id, game_id, category_id, submitted_date))
@@ -106,7 +105,7 @@ pub async fn poll_game_category(
     game_id: &str,
     category_id: &str,
     cutoff_date: &DateTime<Utc>,
-) -> Result<Vec<NewRun>> {
+) -> Result<Vec<NewRun>, ApiError> {
     info!(
         "Polling for new runs: game={}, category={}",
         game_id, category_id
