@@ -79,7 +79,14 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .await
         .context("Failed to mark run as processing")?;
 
-    info!("Processing run: {}", run.run_id);
+    if run.retry_count > 0 {
+        info!(
+            "Processing run: {} (retry attempt {}/{})",
+            run.run_id, run.retry_count, ctx.retry_config.max_attempts
+        );
+    } else {
+        info!("Processing run: {} (initial attempt)", run.run_id);
+    }
 
     let result = download_and_run_replay(
         ctx.client(),
@@ -148,5 +155,30 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), ProcessResult::NoWork));
+    }
+
+    #[tokio::test]
+    async fn test_process_run_logs_initial_vs_retry() {
+        let ctx = create_test_ctx().await;
+
+        let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
+        let new_run = NewRun::new("run_logging", "game1", "cat1", submitted_date);
+        ctx.db.insert_run(new_run).await.unwrap();
+
+        let run = ctx.db.get_run("run_logging").await.unwrap().unwrap();
+        assert_eq!(run.retry_count, 0);
+
+        let next_retry_at = chrono::Utc::now() - chrono::Duration::hours(1);
+        ctx.db
+            .mark_run_error("run_logging", "test error")
+            .await
+            .unwrap();
+        ctx.db
+            .schedule_retry("run_logging", 2, "retryable", next_retry_at)
+            .await
+            .unwrap();
+
+        let run_with_retries = ctx.db.get_run("run_logging").await.unwrap().unwrap();
+        assert_eq!(run_with_retries.retry_count, 2);
     }
 }

@@ -231,4 +231,7 @@ Since the system hasn't been deployed yet:
   - [x] Integration tests (end-to-end retry workflow, permanent failure, rate-limited scheduling)
   - [x] Database tests (ordering, category filtering, retry state persistence)
 - [x] Phase 6: Observability
-  - [x] Add retry logging (logging added in `process_replay_result`)
+  - [x] Add retry scheduling logging (in `process_replay_result`)
+  - [x] Add max attempts logging (in `process_replay_result`)
+  - [x] Add retry success logging (in `process_replay_result`)
+  - [x] Distinguish initial vs retry attempts in processor logs (in `process_run`)
