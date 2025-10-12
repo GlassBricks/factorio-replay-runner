@@ -180,6 +180,20 @@ impl Database {
         Ok(run)
     }
 
+    pub async fn count_runs_by_status(&self) -> Result<std::collections::HashMap<RunStatus, i64>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT status as "status: RunStatus", COUNT(*) as "count: i64"
+            FROM runs
+            GROUP BY status
+            "#
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(|r| (r.status, r.count)).collect())
+    }
+
     pub async fn query_runs(&self, filter: RunFilter) -> Result<Vec<Run>> {
         let mut query_parts = vec!["SELECT run_id, game_id, category_id, submitted_date, status, error_message, retry_count, next_retry_at, error_class, created_at, updated_at FROM runs WHERE 1=1".to_string()];
         let mut conditions = Vec::new();
@@ -1107,6 +1121,45 @@ mod tests {
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0].run_id, "run4");
         assert_eq!(runs[1].run_id, "run3");
+    }
+
+    #[tokio::test]
+    async fn test_count_runs_by_status() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.mark_run_passed("run1").await.unwrap();
+        db.mark_run_failed("run2").await.unwrap();
+
+        let counts = db.count_runs_by_status().await.unwrap();
+        assert_eq!(counts.get(&RunStatus::Discovered), Some(&1));
+        assert_eq!(counts.get(&RunStatus::Passed), Some(&1));
+        assert_eq!(counts.get(&RunStatus::Failed), Some(&1));
+        assert_eq!(counts.get(&RunStatus::Error), None);
     }
 
     #[tokio::test]
