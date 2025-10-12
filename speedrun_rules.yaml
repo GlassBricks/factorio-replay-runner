@@ -1,55 +1,55 @@
 games:
-  ldewr7ed:
+  ldewr7ed: # Factorio: Space Age
     expected_mods:
       - base
       - quality
       - elevated-rails
       - space-age
     categories:
-      n2yzwgmk: {}
+      n2yzwgmk: {} # Any%
 
-      # 7kjwx64d: {}
+      # 7kjwx64d: {} # Default Settings
 
-      # xk97qv6d:
+      # xk97qv6d: # 100%
       #   blueprint_import: true
 
-      # jdzmlwrk:
+      # jdzmlwrk: # Random Seed New Game+
       #   blueprint_import: true
 
-      z27jn1z2:
+      z27jn1z2: # Any% MP
         max_players: 8
 
-      zdn96892:
+      zdn96892: # Default Settings MP
         max_players: 8
 
-  9d35xw1l:
+  9d35xw1l: # Factorio
     expected_mods:
       - base
     categories:
-      ndxjper2:
+      ndxjper2: # Any%
         win_on_rocket_launch: true
 
-      7dg85xp2:
+      7dg85xp2: # Default Settings
         win_on_rocket_launch: true
 
-      wkpy7ljk:
+      wkpy7ljk: # 100%
         blueprint_import: true
 
-      7dggqegd: {}
+      7dggqegd: {} # Steelaxe%
 
-      wkpjq9wk:
+      wkpjq9wk: # Any% MP
         win_on_rocket_launch: true
         max_players: 8
 
-      9kvxm882:
+      9kvxm882: # Default Settings MP
         win_on_rocket_launch: true
         max_players: 8
 
-      wdmw3542: {}
+      wdmw3542: {} # Getting on track like a pro
 
-      9kv7oeek:
+      9kv7oeek: # Any% Duo
         win_on_rocket_launch: true
         max_players: 2
 
-      mke9y0nd:
+      mke9y0nd: # Massive Multiplayer
         max_players: null
