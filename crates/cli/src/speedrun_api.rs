@@ -332,9 +332,11 @@ impl SpeedrunOps {
     }
 
     pub async fn get_category_name(&self, category_id: &str) -> Result<String, ApiError> {
-        let categories = self.categories.read().await;
-        if let Some(name) = categories.get(category_id) {
-            return Ok(name.clone());
+        {
+            let categories = self.categories.read().await;
+            if let Some(name) = categories.get(category_id) {
+                return Ok(name.clone());
+            }
         }
         let category = self.client.get_category(category_id).await?;
         let name = category.name;

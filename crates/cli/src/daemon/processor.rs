@@ -79,13 +79,21 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .await
         .context("Failed to mark run as processing")?;
 
+    let game_category = ctx
+        .speedrun_ops
+        .format_game_category(&run.game_id, &run.category_id)
+        .await;
+
     if run.retry_count > 0 {
         info!(
-            "Processing run: {} (retry attempt {}/{})",
-            run.run_id, run.retry_count, ctx.retry_config.max_attempts
+            "Processing run {} for {} (retry attempt {}/{})",
+            run.run_id, game_category, run.retry_count, ctx.retry_config.max_attempts
         );
     } else {
-        info!("Processing run: {} (initial attempt)", run.run_id);
+        info!(
+            "Processing run {} for {} (initial attempt)",
+            run.run_id, game_category
+        );
     }
 
     let result = download_and_run_replay(
