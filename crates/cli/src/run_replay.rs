@@ -15,7 +15,7 @@ use factorio_manager::{
 };
 use futures::{AsyncBufReadExt, Stream, StreamExt};
 use log::{debug, info};
-use replay_script::{MsgLevel, ReplayMsg};
+use replay_script::{ExitSignal, MsgLevel, ReplayMsg};
 use tokio::time::{Instant, sleep};
 
 use crate::config::RunRules;
@@ -95,10 +95,10 @@ async fn run_and_log_replay(
     info!("Starting replay");
     info!("Writing to: {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
-    let max_msg_level = record_output(&mut process, log_path).await?;
+    let (max_msg_level, exited_early) = record_output(&mut process, log_path).await?;
 
     let exit_status = process.wait().await?;
-    if !exit_status.success() {
+    if !exit_status.success() && !exited_early {
         return Err(FactorioError::ProcessExitedUnsuccessfully {
             exit_code: exit_status.code(),
         });
@@ -127,13 +127,14 @@ fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(),
 async fn record_output(
     process: &mut FactorioProcess,
     log_path: &Path,
-) -> Result<MsgLevel, FactorioError> {
+) -> Result<(MsgLevel, bool), FactorioError> {
     let mut log_file = File::create(log_path)?;
-    let mut msgs = msg_stream(process);
+    let mut stream = msg_stream(process);
 
     let mut max_level = MsgLevel::Info;
     let timeout_duration = Duration::from_secs(300);
     let mut last_message_time = Instant::now();
+    let mut exited_successfully = false;
 
     loop {
         let time_since_last_msg = last_message_time.elapsed();
@@ -142,40 +143,60 @@ async fn record_output(
             .unwrap_or(Duration::ZERO);
 
         tokio::select! {
-            msg = msgs.next() => {
-                match msg {
-                    Some(msg) => {
+            item = stream.next() => {
+                match item {
+                    Some(StreamItem::Message(msg)) => {
                         writeln!(log_file, "{}", msg)?;
                         max_level = max_level.max(msg.level);
                         last_message_time = Instant::now();
+                    }
+                    Some(StreamItem::Exit(exit)) => {
+                        writeln!(log_file, "{}", exit)?;
+                        drop(stream);
+                        process.terminate();
+                        exited_successfully = true;
+                        break;
                     }
                     None => break,
                 }
             }
             _ = sleep(remaining_time), if remaining_time > Duration::ZERO => {
-                drop(msgs);
+                drop(stream);
                 process.terminate();
                 return Err(FactorioError::ReplayTimeout);
             }
         }
     }
-    Ok(max_level)
+
+    if exited_successfully {
+        info!("Replay exited successfully via exit signal");
+    }
+
+    Ok((max_level, exited_successfully))
 }
 
-fn msg_stream(process: &mut FactorioProcess) -> Pin<Box<dyn Stream<Item = ReplayMsg> + '_>> {
-    // ^ that's a fun type
+enum StreamItem {
+    Message(ReplayMsg),
+    Exit(ExitSignal),
+}
+
+fn msg_stream(process: &mut FactorioProcess) -> Pin<Box<dyn Stream<Item = StreamItem> + '_>> {
     let mut reader = process.stdout_reader().unwrap();
     Box::pin(async_stream::stream! {
         let mut line = String::new();
         loop {
             line.clear();
             match reader.read_line(&mut line).await {
-                Ok(0) => break, // EOF
+                Ok(0) => break,
                 Ok(_) => {
                     let line = line.trim_end();
-                    if let Ok(msg) = ReplayMsg::from_str(line) {
+                    if let Ok(exit) = ExitSignal::from_str(line) {
+                        log::info!("{exit}");
+                        yield StreamItem::Exit(exit);
+                        break;
+                    } else if let Ok(msg) = ReplayMsg::from_str(line) {
                         log::info!("{msg}");
-                        yield msg;
+                        yield StreamItem::Message(msg);
                     } else {
                         log::debug!("{line}");
                     }

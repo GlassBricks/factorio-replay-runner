@@ -10,6 +10,7 @@ declare global {
   }
   var addReplayLib: (lib: ReplayLib) => void
   var afterReplay: (fn: () => void) => void
+  var exitReplay: (message: string) => void
   var PARAM_VALUE: any
 
   type NamedEvents = {
@@ -65,6 +66,10 @@ addReplayLib = (lib: ReplayLib) => {
 const afterReplayFns: Array<() => void> = []
 afterReplay = function (fn: () => void): void {
   afterReplayFns.push(fn)
+}
+
+exitReplay = function (message: string): void {
+  print("REPLAY_EXIT_SUCCESS:", game.ticks_played, message)
 }
 
 addReplayLib({

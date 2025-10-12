@@ -21,6 +21,37 @@ pub struct ReplayMsg {
 }
 
 pub const REPLAY_SCRIPT_EVENT_PREFIX: &str = "REPLAY_SCRIPT_EVENT:";
+pub const REPLAY_EXIT_SUCCESS_PREFIX: &str = "REPLAY_EXIT_SUCCESS:";
+
+pub struct ExitSignal {
+    pub time: u64,
+    pub message: String,
+}
+
+impl FromStr for ExitSignal {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, ()> {
+        let parts: Vec<&str> = value.split('\t').collect();
+        if parts.len() != 3 || parts[0] != REPLAY_EXIT_SUCCESS_PREFIX {
+            return Err(());
+        };
+        Ok(ExitSignal {
+            time: parts[1].parse().map_err(|_| ())?,
+            message: parts[2].to_string(),
+        })
+    }
+}
+
+impl fmt::Display for ExitSignal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Replay exited successfully at tick {}: {}",
+            self.time, self.message
+        )
+    }
+}
 
 impl FromStr for ReplayMsg {
     type Err = ();
@@ -139,5 +170,21 @@ mod tests {
             assert_eq!(formatted.time, time);
             assert_eq!(formatted.message, msg);
         }
+    }
+
+    #[test]
+    fn test_parse_exit_signal() {
+        let exit = "REPLAY_EXIT_SUCCESS:\t456\tFirst rocket launched";
+        let exit = ExitSignal::from_str(exit);
+        assert!(exit.is_ok());
+        let exit = exit.unwrap();
+        assert_eq!(exit.time, 456);
+        assert_eq!(exit.message, "First rocket launched");
+
+        let invalid = "REPLAY_SCRIPT_EVENT:\t123\tInfo\tNot an exit";
+        assert!(ExitSignal::from_str(invalid).is_err());
+
+        let invalid_format = "REPLAY_EXIT_SUCCESS:\tinvalid\tMessage";
+        assert!(ExitSignal::from_str(invalid_format).is_err());
     }
 }
