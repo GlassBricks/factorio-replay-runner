@@ -232,7 +232,7 @@ async fn run_src(
 
     let report = result.as_ref().ok().cloned();
     let retry_config = crate::retry::RetryConfig::default();
-    db.process_replay_result(&fetched_run_id, result, &retry_config)
+    db.process_replay_result(&fetched_run_id, result, run_rules, &retry_config)
         .await?;
 
     report.ok_or_else(|| anyhow::anyhow!("Failed to process replay"))

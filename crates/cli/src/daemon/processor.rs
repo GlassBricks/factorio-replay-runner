@@ -99,7 +99,7 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
     .await;
 
     ctx.db
-        .process_replay_result(&run.run_id, result, &ctx.retry_config)
+        .process_replay_result(&run.run_id, result, run_rules, &ctx.retry_config)
         .await
 }
 

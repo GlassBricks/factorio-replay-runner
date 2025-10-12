@@ -23,6 +23,7 @@ use crate::config::RunRules;
 #[derive(Clone, Copy)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
+    pub exited_via_script: bool,
 }
 
 impl ReplayReport {
@@ -95,10 +96,10 @@ async fn run_and_log_replay(
     info!("Starting replay");
     info!("Writing to: {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
-    let (max_msg_level, exited_early) = record_output(&mut process, log_path).await?;
+    let (max_msg_level, exited_via_script) = record_output(&mut process, log_path).await?;
 
     let exit_status = process.wait().await?;
-    if !exit_status.success() && !exited_early {
+    if !exit_status.success() && !exited_via_script {
         return Err(FactorioError::ProcessExitedUnsuccessfully {
             exit_code: exit_status.code(),
         });
@@ -106,7 +107,10 @@ async fn run_and_log_replay(
 
     copy_factorio_log(instance, log_path)?;
 
-    Ok(ReplayReport { max_msg_level })
+    Ok(ReplayReport {
+        max_msg_level,
+        exited_via_script,
+    })
 }
 
 fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(), FactorioError> {
