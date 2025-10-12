@@ -364,69 +364,56 @@ factorio-replay-cli query import --input backup.json
 - Verify output formatting across different terminal widths
 - Test name resolution with real speedrun.com API
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Foundation
-- [ ] Add dependencies (`comfy-table`, `csv`)
-- [ ] Create `crates/cli/src/query.rs` module for command handling
-- [ ] Add `Query` command variant to `Commands` enum in `main.rs`
-- [ ] Create `RunFilter` struct in `database/types.rs`
-- [ ] Implement `Database::query_runs()` in `database/operations.rs`
+### Phase 1: Foundation ✓
+- [x] Add dependencies (`comfy-table`, `csv`, `serde_json`)
+- [x] Create `crates/cli/src/query/mod.rs` module for command handling
+- [x] Add `Query` command variant to `Commands` enum in `main.rs`
+- [x] Create `RunFilter` struct in `database/types.rs`
+- [x] Implement `Database::query_runs()` in `database/operations.rs`
 
-### Phase 2: Core Subcommands
-- [ ] Implement `list` subcommand
-  - CLI args parsing
-  - Database query with filter
-  - Table formatter (default)
-- [ ] Implement `show` subcommand
-  - Fetch single run
-  - Format detailed output
-- [ ] Implement `stats` subcommand
-  - Add `Database::count_runs_by_status()`
-  - Add `Database::get_stats()` for aggregates
-  - Format statistics output
+### Phase 2: Core Subcommands ✓
+- [x] Implement `list` subcommand with filtering and basic table output
+- [x] Implement `show` subcommand with detailed text output
+- [x] Implement `stats` subcommand with aggregates
+- [x] Add `Database::count_runs_by_status()`
+- [x] Add Hash trait to RunStatus for HashMap support
 
-### Phase 3: Output Formatting
-- [ ] Create `query/formatter.rs` module
-- [ ] Implement `TableFormatter` using `comfy-table`
-- [ ] Implement `JsonFormatter` using `serde_json`
-- [ ] Implement `CsvFormatter` using `csv` crate
-- [ ] Add `--format` flag support to `list` and `show`
+### Phase 3: Output Formatting ✓
+- [x] Create `query/formatter.rs` module
+- [x] Implement `TableFormatter` using `comfy-table`
+- [x] Implement `JsonFormatter` using `serde_json`
+- [x] Implement `CsvFormatter` using `csv` crate
+- [x] Add `--format` flag support to `list` (table/json/csv) and `show` (text/json)
 
-### Phase 4: Additional Subcommands
-- [ ] Implement `queue` subcommand
-  - Query pending and retry-scheduled runs
-  - Format queue summary
-- [ ] Implement `errors` subcommand
-  - Filter runs with error status
-  - Optional grouping logic
-- [ ] Implement `reset` subcommand
-  - Add `Database::reset_run()`
-  - Update run status and clear retry fields
+### Phase 4: Additional Subcommands ✓
+- [x] Implement `queue` subcommand showing pending runs and scheduled retries
+- [x] Implement `errors` subcommand with error_class filtering
+- [x] Implement `reset` subcommand to reset runs to discovered status
+- [x] Make `update_run_status` public for reset functionality
 
-### Phase 5: Cleanup & Safety
-- [ ] Implement `cleanup` subcommand
-  - Add `Database::delete_runs()`
-  - Add confirmation prompt
-  - Implement `--dry-run` flag
-- [ ] Add tests for all subcommands
-- [ ] Update CLAUDE.md with query command usage
+### Phase 5: Not Implemented
+- [ ] `cleanup` subcommand - can be added in the future if needed
+- [ ] `--group-by` for errors command
+- [ ] `--since` filtering for stats
+- [ ] Name resolution for game/category IDs
 
-### Key Files
+### Implementation Details
 
-**New files:**
-- `crates/cli/src/query/mod.rs` - Query module organization, and main dispatcher
-- `crates/cli/src/query/formatter.rs` - Output formatters
-- `crates/cli/src/query/list.rs` - List subcommand
-- `crates/cli/src/query/show.rs` - Show subcommand
-- `crates/cli/src/query/stats.rs` - Stats subcommand
-- `crates/cli/src/query/queue.rs` - Queue subcommand
-- `crates/cli/src/query/errors.rs` - Errors subcommand
-- `crates/cli/src/query/reset.rs` - Reset subcommand
-- `crates/cli/src/query/cleanup.rs` - Cleanup subcommand
+**Actual files created:**
+- `crates/cli/src/query/mod.rs` - All query subcommands in single module
+- `crates/cli/src/query/formatter.rs` - Output formatters for table/json/csv
 
 **Modified files:**
 - `crates/cli/src/main.rs` - Add Query command variant
-- `crates/cli/src/database/types.rs` - Add RunFilter struct
-- `crates/cli/src/database/operations.rs` - Add query methods
-- `Cargo.toml` - Add comfy-table, csv dependencies
+- `crates/cli/src/database/types.rs` - Add RunFilter struct, Hash trait, Serialize trait
+- `crates/cli/src/database/operations.rs` - Add query_runs, count_runs_by_status, make update_run_status public
+- `Cargo.toml` - Add comfy-table, csv, serde_json dependencies
+
+**Implementation notes:**
+- All subcommands implemented in single mod.rs file for simplicity
+- Sorting is always by submitted_date DESC (hardcoded)
+- No name resolution for game/category IDs - shows raw IDs
+- Reset always sets status to discovered (--status option not implemented)
+- Tests added for query_runs and count_runs_by_status
