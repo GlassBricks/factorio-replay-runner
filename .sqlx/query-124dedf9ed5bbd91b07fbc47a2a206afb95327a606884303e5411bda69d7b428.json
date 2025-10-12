@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE runs\n            SET next_retry_at = NULL, error_class = ?, updated_at = ?\n            WHERE run_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "124dedf9ed5bbd91b07fbc47a2a206afb95327a606884303e5411bda69d7b428"
+}
