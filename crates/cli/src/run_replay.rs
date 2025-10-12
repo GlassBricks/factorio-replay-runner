@@ -21,19 +21,14 @@ use crate::config::RunRules;
 #[derive(Clone, Copy)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
-    pub exited_successfully: bool,
 }
 
 impl ReplayReport {
     pub fn to_exit_code(self) -> i32 {
-        if !self.exited_successfully {
-            10
-        } else {
-            match self.max_msg_level {
-                MsgLevel::Info => 0,
-                MsgLevel::Warn => 1,
-                MsgLevel::Error => 2,
-            }
+        match self.max_msg_level {
+            MsgLevel::Info => 0,
+            MsgLevel::Warn => 1,
+            MsgLevel::Error => 2,
         }
     }
 }
@@ -101,14 +96,15 @@ async fn run_and_log_replay(
     let max_msg_level = record_output(&mut process, log_path).await?;
 
     let exit_status = process.wait().await?;
-    let exited_successfully = exit_status.success();
+    if !exit_status.success() {
+        return Err(FactorioError::ProcessExitedUnsuccessfully {
+            exit_code: exit_status.code(),
+        });
+    }
 
     copy_factorio_log(instance, log_path)?;
 
-    Ok(ReplayReport {
-        max_msg_level,
-        exited_successfully,
-    })
+    Ok(ReplayReport { max_msg_level })
 }
 
 fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(), FactorioError> {

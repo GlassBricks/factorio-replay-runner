@@ -184,7 +184,7 @@ impl Database {
         result: Result<ReplayReport, ClassifiedError>,
     ) -> Result<()> {
         match result {
-            Ok(report) if report.exited_successfully => match report.max_msg_level {
+            Ok(report) => match report.max_msg_level {
                 MsgLevel::Info => {
                     self.mark_run_passed(run_id).await?;
                     info!("Run {} passed verification", run_id);
@@ -198,11 +198,6 @@ impl Database {
                     warn!("Run {} failed verification", run_id);
                 }
             },
-            Ok(_) => {
-                let error_msg = "Replay did not exit successfully";
-                self.mark_run_error(run_id, error_msg).await?;
-                error!("Run {} error: {}", run_id, error_msg);
-            }
             Err(e) => {
                 self.mark_run_error(run_id, &e.message).await?;
                 error!("Run {} error: {}", run_id, e.message);

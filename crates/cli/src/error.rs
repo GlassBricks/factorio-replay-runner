@@ -58,6 +58,7 @@ impl From<FactorioError> for ClassifiedError {
             FactorioError::InstallationNotFound(_) => ErrorClass::Retryable,
             FactorioError::InstallDirError(_) => ErrorClass::Retryable,
             FactorioError::ProcessSpawnFailed(_) => ErrorClass::Retryable,
+            FactorioError::ProcessExitedUnsuccessfully { .. } => ErrorClass::Retryable,
             FactorioError::ModInfoReadFailed(_) => ErrorClass::Retryable,
             FactorioError::IoError(_) => ErrorClass::Retryable,
         };
