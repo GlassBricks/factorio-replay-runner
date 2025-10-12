@@ -175,7 +175,7 @@ impl FileDownloader {
         services: &'a mut [DynFileService],
         input: &str,
     ) -> Result<Box<dyn FileDownloadHandle + 'a>, DownloadError> {
-        debug!("Input is: {}", input);
+        info!("Input is: {}", input);
         services
             .iter_mut()
             .find_map(|service| service.detect_link(input))

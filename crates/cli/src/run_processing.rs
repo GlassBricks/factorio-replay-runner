@@ -127,7 +127,7 @@ pub async fn poll_game_category(
         .filter_map(|run| {
             let submitted_dt = run.submitted?;
             let submitted_date = crate::speedrun_api::parse_datetime(&submitted_dt).ok()?;
-            (submitted_date >= *cutoff_date)
+            (submitted_date > *cutoff_date)
                 .then(|| NewRun::new(run.id, game_id, category_id, submitted_date))
         })
         .collect();
