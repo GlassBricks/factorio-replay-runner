@@ -19,6 +19,7 @@ impl ProcessManager {
     }
 
     pub fn register(&self, id: ProcessId) {
+        log::debug!("Registering process with ID {}", id);
         self.processes.lock().unwrap().insert(id);
     }
 
@@ -26,13 +27,16 @@ impl ProcessManager {
         self.processes.lock().unwrap().remove(&id);
     }
 
-    pub fn kill_all(&self) {
+    pub fn sig_int_all(&self) {
         log::info!("Killing all processes");
         let mut processes = self.processes.lock().unwrap();
         for pid in processes.drain() {
-            // Send SIGTERM to the process
+            log::debug!("Killing process with ID {}", pid);
+            // Send SIGINT TWICE to the process
+            // (bug: run-replay needs two sigterm).
             unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                libc::kill(pid as libc::pid_t, libc::SIGINT);
+                libc::kill(pid as libc::pid_t, libc::SIGINT);
             }
         }
     }
@@ -112,7 +116,7 @@ mod tests {
         assert_eq!(manager.process_count(), 2);
 
         // Kill all processes
-        manager.kill_all();
+        manager.sig_int_all();
 
         // Give a moment for processes to terminate
         sleep(Duration::from_millis(100)).await;

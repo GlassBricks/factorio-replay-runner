@@ -42,7 +42,7 @@ impl ShutdownCoordinator {
                         let count = sigint_count.fetch_add(1, Ordering::SeqCst) + 1;
                         if count == 1 {
                             log::info!("Received SIGINT, cleaning up processes... (press ctrl-c again to force quit)");
-                            process_manager.kill_all();
+                            process_manager.sig_int_all();
                             let _ = shutdown_tx.send(true);
                         } else {
                             log::warn!("Received SIGINT again, force quitting...");
@@ -51,7 +51,7 @@ impl ShutdownCoordinator {
                     }
                     _ = sigterm.recv() => {
                         log::info!("Received SIGTERM, cleaning up processes...");
-                        process_manager.kill_all();
+                        process_manager.sig_int_all();
                         let _ = shutdown_tx.send(true);
                         break;
                     }
