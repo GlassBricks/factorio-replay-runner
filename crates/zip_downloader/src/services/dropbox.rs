@@ -1,5 +1,6 @@
 use crate::DownloadError;
 use crate::services::{FileMeta, FileService};
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -41,11 +42,12 @@ impl std::fmt::Display for DropboxFileId {
 async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta, DownloadError> {
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
-    let response = client.head(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(
-            anyhow::Error::from(e).context("Failed to send request to Dropbox"),
-        )
-    })?;
+    let response = client
+        .head(&url)
+        .send()
+        .await
+        .context("Failed to send request to Dropbox")
+        .map_err(DownloadError::ServiceError)?;
 
     if !response.status().is_success() {
         return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
@@ -84,11 +86,12 @@ async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), Downl
 
     let client = reqwest::Client::new();
     let url = file_id.to_direct_download_url();
-    let response = client.get(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(
-            anyhow::Error::from(e).context("Failed to send request to Dropbox"),
-        )
-    })?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to send request to Dropbox")
+        .map_err(DownloadError::ServiceError)?;
 
     if !response.status().is_success() {
         return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
@@ -103,11 +106,9 @@ async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), Downl
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
-        let bytes = chunk.map_err(|e| {
-            DownloadError::ServiceError(
-                anyhow::Error::from(e).context("Failed to read response stream"),
-            )
-        })?;
+        let bytes = chunk
+            .context("Failed to read response stream")
+            .map_err(DownloadError::ServiceError)?;
         file.write_all(&bytes)
             .await
             .map_err(DownloadError::IoError)?;

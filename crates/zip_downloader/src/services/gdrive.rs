@@ -1,5 +1,6 @@
 use crate::DownloadError;
 use crate::services::{FileMeta, FileService};
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::StreamExt;
 use lazy_static::lazy_static;
@@ -23,11 +24,12 @@ async fn get_file_info_from_headers(
 ) -> Result<FileMeta, DownloadError> {
     let url = public_download_url(file_id);
 
-    let response = client.get(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(
-            anyhow::Error::from(e).context("Failed to send request to Google Drive"),
-        )
-    })?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to send request to Google Drive")
+        .map_err(DownloadError::ServiceError)?;
 
     if !response.status().is_success() {
         return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
@@ -70,11 +72,12 @@ async fn get_file_info_from_headers(
 async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), DownloadError> {
     let client = reqwest::Client::new();
     let url = public_download_url(file_id);
-    let response = client.get(&url).send().await.map_err(|e| {
-        DownloadError::ServiceError(
-            anyhow::Error::from(e).context("Failed to send request to Google Drive"),
-        )
-    })?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to send request to Google Drive")
+        .map_err(DownloadError::ServiceError)?;
 
     if !response.status().is_success() {
         return Err(DownloadError::FileNotAccessible(anyhow::anyhow!(
@@ -99,11 +102,9 @@ async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), Downl
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
-        let bytes = chunk.map_err(|e| {
-            DownloadError::ServiceError(
-                anyhow::Error::from(e).context("Failed to read response stream"),
-            )
-        })?;
+        let bytes = chunk
+            .context("Failed to read response stream")
+            .map_err(DownloadError::ServiceError)?;
         file.write_all(&bytes)
             .await
             .map_err(DownloadError::IoError)?;

@@ -1,5 +1,6 @@
 use crate::DownloadError;
 use crate::services::{FileMeta, FileService};
+use anyhow::Context;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -63,11 +64,8 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta, DownloadErr
     let output = create_curl_command(file_id.url())
         .arg("-I")
         .output()
-        .map_err(|e| {
-            DownloadError::ServiceError(
-                anyhow::Error::from(e).context("Failed to execute curl command for speedrun.com"),
-            )
-        })?;
+        .context("Failed to execute curl command for speedrun.com")
+        .map_err(DownloadError::ServiceError)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -112,11 +110,8 @@ async fn download_file(file_id: &SpeedrunFileId, dest: &Path) -> Result<(), Down
         .arg("-o")
         .arg(dest)
         .output()
-        .map_err(|e| {
-            DownloadError::ServiceError(
-                anyhow::Error::from(e).context("Failed to execute curl command for speedrun.com"),
-            )
-        })?;
+        .context("Failed to execute curl command for speedrun.com")
+        .map_err(DownloadError::ServiceError)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

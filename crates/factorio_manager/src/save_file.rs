@@ -20,7 +20,8 @@ pub struct SaveFile<F: Read + Seek> {
 impl<F: Read + Seek> SaveFile<F> {
     pub fn new(file: F) -> Result<Self, FactorioError> {
         let mut zip = ZipArchive::new(file)
-            .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
+            .map_err(anyhow::Error::from)
+            .map_err(FactorioError::InvalidSaveFile)?;
         let save_name = find_save_name(&mut zip)?;
         Ok(Self {
             zip,
@@ -90,7 +91,8 @@ impl<F: Read + Seek> SaveFile<F> {
     pub fn get_control_lua_contents(&mut self) -> Result<&str, FactorioError> {
         if self.control_lua_contents.is_none() {
             let contents = read_to_new_string(self.get_inner_file("control.lua")?)
-                .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
+                .map_err(anyhow::Error::from)
+                .map_err(FactorioError::InvalidSaveFile)?;
             self.control_lua_contents = Some(contents);
         }
         Ok(self.control_lua_contents.as_ref().unwrap())
@@ -142,18 +144,12 @@ impl<F: Read + Seek> SaveFile<F> {
 
         let mut zip = ZipWriter::new(out_file);
         self.copy_files_except(&mut zip, &ctrl_lua_path)
-            .map_err(|e| {
-                FactorioError::ScriptInjectionFailed(
-                    anyhow::Error::from(e).context("Failed to copy files"),
-                )
-            })?;
+            .context("Failed to copy files")
+            .map_err(FactorioError::ScriptInjectionFailed)?;
 
         zip.start_file(ctrl_lua_path, SimpleFileOptions::default())
-            .map_err(|e| {
-                FactorioError::ScriptInjectionFailed(
-                    anyhow::Error::from(e).context("Failed to start control.lua file in zip"),
-                )
-            })?;
+            .context("Failed to start control.lua file in zip")
+            .map_err(FactorioError::ScriptInjectionFailed)?;
         writeln!(
             zip,
             r"{ctrl_lua_contents}
@@ -161,11 +157,8 @@ impl<F: Read + Seek> SaveFile<F> {
 -- Begin replay script
 {replay_script}",
         )
-        .map_err(|e| {
-            FactorioError::ScriptInjectionFailed(
-                anyhow::Error::from(e).context("Failed to write control.lua contents"),
-            )
-        })?;
+        .context("Failed to write control.lua contents")
+        .map_err(FactorioError::ScriptInjectionFailed)?;
         Ok(())
     }
 }
@@ -204,7 +197,8 @@ mod tests {
     fn save_name_result(names: &[&str]) -> Result<String, FactorioError> {
         let temp_file = simple_test_zip(names).map_err(|e| FactorioError::InvalidSaveFile(e))?;
         let mut zip = ZipArchive::new(temp_file)
-            .map_err(|e| FactorioError::InvalidSaveFile(anyhow::Error::from(e)))?;
+            .map_err(anyhow::Error::from)
+            .map_err(FactorioError::InvalidSaveFile)?;
         find_save_name(&mut zip)
     }
 

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::fmt::Display;
 use std::path::{Path, PathBuf, absolute};
 
@@ -25,11 +26,9 @@ impl TryFrom<&str> for VersionStr {
             )));
         }
         let parse_part = |part: &str, name: &str| -> Result<u16, FactorioError> {
-            part.parse().map_err(|e| {
-                FactorioError::InvalidVersion(
-                    anyhow::Error::from(e).context(format!("Invalid {} version", name)),
-                )
-            })
+            part.parse()
+                .context(format!("Invalid {} version", name))
+                .map_err(FactorioError::InvalidVersion)
         };
 
         Ok(VersionStr(
@@ -59,12 +58,10 @@ pub struct FactorioInstallDir {
 impl FactorioInstallDir {
     pub fn new(path: impl Into<PathBuf>) -> Result<Self, FactorioError> {
         let path: PathBuf = path.into();
-        let path = path.canonicalize().map_err(|e| {
-            FactorioError::InstallDirError(
-                anyhow::Error::from(e)
-                    .context(format!("Failed to canonicalize path: {}", path.display())),
-            )
-        })?;
+        let path = path
+            .canonicalize()
+            .context(format!("Failed to canonicalize path: {}", path.display()))
+            .map_err(FactorioError::InstallDirError)?;
         if !path.exists() || !path.is_dir() {
             return Err(FactorioError::InstallDirError(anyhow::anyhow!(
                 "Path is not a directory: {}",
@@ -77,19 +74,14 @@ impl FactorioInstallDir {
     pub fn new_or_create(path: impl AsRef<Path>) -> Result<Self, FactorioError> {
         let path = path.as_ref();
         if !path.exists() {
-            std::fs::create_dir_all(path).map_err(|e| {
-                FactorioError::InstallDirError(
-                    anyhow::Error::from(e)
-                        .context(format!("Failed to create directory: {}", path.display())),
-                )
-            })?;
+            std::fs::create_dir_all(path)
+                .context(format!("Failed to create directory: {}", path.display()))
+                .map_err(FactorioError::InstallDirError)?;
         }
-        let path = path.canonicalize().map_err(|e| {
-            FactorioError::InstallDirError(
-                anyhow::Error::from(e)
-                    .context(format!("Failed to canonicalize path: {}", path.display())),
-            )
-        })?;
+        let path = path
+            .canonicalize()
+            .context(format!("Failed to canonicalize path: {}", path.display()))
+            .map_err(FactorioError::InstallDirError)?;
         Self::new(path)
     }
 
@@ -107,18 +99,16 @@ async fn download_factorio(version: VersionStr, out_folder: &Path) -> Result<(),
         absolute(out_folder.join(format!("factorio-{}.tar.xz", version))).map_err(|e| {
             FactorioError::FactorioDownloadFailed {
                 version,
-                source: anyhow::Error::from(e),
+                source: e.into(),
             }
         })?;
     println!("Downloading Factorio {} to {}", version, zip_path.display());
     try_download(&url, &zip_path)
         .await
         .map_err(|e| FactorioError::FactorioDownloadFailed { version, source: e })?;
-    let out_path = absolute(out_folder.join(version.to_string())).map_err(|e| {
-        FactorioError::ExtractionFailed(
-            anyhow::Error::from(e).context("Failed to get extraction path"),
-        )
-    })?;
+    let out_path = absolute(out_folder.join(version.to_string()))
+        .context("Failed to get extraction path")
+        .map_err(FactorioError::ExtractionFailed)?;
     println!(
         "Extracting {} to {}",
         zip_path.display(),
