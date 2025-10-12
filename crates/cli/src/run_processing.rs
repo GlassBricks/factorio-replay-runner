@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use chrono::DateTime;
 use chrono::Utc;
+use factorio_manager::error::FactorioError;
 use factorio_manager::expected_mods::ExpectedMods;
-use factorio_manager::factorio_install_dir::FactorioInstallDir;
+use factorio_manager::factorio_install_dir::{FactorioInstallDir, VersionStr};
 use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
 use log::debug;
 use log::info;
@@ -17,6 +18,8 @@ use crate::config::RunRules;
 use crate::database::types::NewRun;
 use crate::run_replay::{ReplayReport, run_replay};
 use crate::speedrun_api::{RunsQuery, SpeedrunClient};
+
+const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
 
 pub struct RunProcessor<'a> {
     downloader: FileDownloader,
@@ -147,6 +150,11 @@ pub async fn download_and_run_replay(
 
     let mut processor = RunProcessor::new(client)?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
+
+    let version = save_file.1.get_factorio_version()?;
+    if version < MIN_FACTORIO_VERSION {
+        return Err(FactorioError::VersionTooOld { version }.into());
+    }
 
     let install_dir = FactorioInstallDir::new_or_create(install_dir)?;
     let log_path = working_dir.join("output.log");
