@@ -9,5 +9,3 @@
 /worktrees/
 .claude
 run_verification.db*
-fixtures/TEST.installed.zip
-fixtures/all_checks.yaml
