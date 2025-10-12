@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
 use factorio_manager::error::FactorioError;
@@ -16,6 +16,8 @@ use zip_downloader::services::speedrun::SpeedrunService;
 
 use crate::config::RunRules;
 use crate::database::types::NewRun;
+use crate::error::ClassifiedError;
+use crate::error::ErrorClass;
 use crate::run_replay::{ReplayReport, run_replay};
 use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient};
 
@@ -58,16 +60,18 @@ impl<'a> RunProcessor<'a> {
         &mut self,
         description: &str,
         working_dir: &Path,
-    ) -> Result<WrittenSaveFile> {
+    ) -> Result<WrittenSaveFile, ClassifiedError> {
         info!("Downloading save file");
         let save_file_info = self
             .downloader
             .download_zip(description, working_dir)
-            .await
-            .context("Failed to download save file")?;
+            .await?;
 
         let save_path = working_dir.join(save_file_info.name);
-        let save_file = SaveFile::new(File::open(&save_path)?)?;
+        let file = File::open(&save_path).map_err(|e| {
+            ClassifiedError::from(factorio_manager::error::FactorioError::IoError(e))
+        })?;
+        let save_file = SaveFile::new(file).map_err(ClassifiedError::from)?;
 
         Ok(WrittenSaveFile(save_path, save_file))
     }
@@ -76,7 +80,7 @@ impl<'a> RunProcessor<'a> {
         &mut self,
         run_id: &str,
         working_dir: &Path,
-    ) -> Result<WrittenSaveFile> {
+    ) -> Result<WrittenSaveFile, ClassifiedError> {
         let description = self.fetch_run_description(run_id).await?;
         self.download_save(&description, working_dir).await
     }
@@ -140,14 +144,16 @@ pub async fn download_and_run_replay(
     expected_mods: &ExpectedMods,
     install_dir: &Path,
     output_dir: &Path,
-) -> Result<ReplayReport> {
+) -> Result<ReplayReport, ClassifiedError> {
     info!("=== Processing Run ===");
     info!("Run ID: {}", run_id);
 
     let working_dir = output_dir.join(run_id);
-    std::fs::create_dir_all(&working_dir)?;
+    std::fs::create_dir_all(&working_dir)
+        .map_err(|e| ClassifiedError::from_error(ErrorClass::Retryable, &e))?;
 
-    let mut processor = RunProcessor::new(client)?;
+    let mut processor = RunProcessor::new(client)
+        .map_err(|e| ClassifiedError::from_error(ErrorClass::Retryable, &e))?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
 
     let version = save_file.1.get_factorio_version()?;
@@ -158,12 +164,14 @@ pub async fn download_and_run_replay(
     let install_dir = FactorioInstallDir::new_or_create(install_dir)?;
     let log_path = working_dir.join("output.log");
 
-    run_replay(
+    let report = run_replay(
         &install_dir,
         &mut save_file,
         run_rules,
         expected_mods,
         &log_path,
     )
-    .await
+    .await?;
+
+    Ok(report)
 }

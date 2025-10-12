@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::{fs::File, io::Write, path::Path};
 
 use anyhow::Result;
+use factorio_manager::error::FactorioError;
 use factorio_manager::factorio_instance::{FactorioInstance, FactorioProcess};
 use factorio_manager::save_file::SaveFile;
 use factorio_manager::{
@@ -43,7 +44,7 @@ pub async fn run_replay(
     rules: &RunRules,
     expected_mods: &ExpectedMods,
     log_path: &Path,
-) -> Result<ReplayReport> {
+) -> Result<ReplayReport, FactorioError> {
     info!("=== Run Information ===");
     info!("Save file: {}", save_path.display());
 
@@ -59,16 +60,16 @@ pub async fn run_replay(
 async fn get_instance(
     install_dir: &FactorioInstallDir,
     save_file: &mut SaveFile<File>,
-) -> Result<FactorioInstance> {
+) -> Result<FactorioInstance, FactorioError> {
     let version = save_file.get_factorio_version()?;
-    Ok(install_dir.get_or_download_factorio(version).await?)
+    install_dir.get_or_download_factorio(version).await
 }
 
 async fn perform_pre_run_checks(
     instance: &mut FactorioInstance,
     save_path: &Path,
     expected_mods: &ExpectedMods,
-) -> Result<()> {
+) -> Result<(), FactorioError> {
     info!("Performing pre-run checks");
     let mod_versions = instance.get_mod_versions(save_path).await?;
     check_expected_mods(expected_mods, &mod_versions)?;
@@ -80,7 +81,7 @@ async fn install_replay_script(
     save_path: &Path,
     save_file: &mut SaveFile<File>,
     rules: &RunRules,
-) -> Result<PathBuf> {
+) -> Result<PathBuf, FactorioError> {
     info!("Installing replay script");
     let replay_script = &rules.replay_scripts;
     debug!("Enabled checks: {:?}", replay_script);
@@ -93,7 +94,7 @@ async fn run_and_log_replay(
     instance: &FactorioInstance,
     installed_save_path: &Path,
     log_path: &Path,
-) -> Result<ReplayReport> {
+) -> Result<ReplayReport, FactorioError> {
     info!("Starting replay");
     info!("Writing to: {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
@@ -110,7 +111,7 @@ async fn run_and_log_replay(
     })
 }
 
-fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<()> {
+fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(), FactorioError> {
     let factorio_log = instance.log_file_path();
     factorio_log
         .exists()
@@ -125,7 +126,10 @@ fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<()>
 }
 
 /// returns when stdout closes.
-async fn record_output(process: &mut FactorioProcess, log_path: &Path) -> Result<MsgLevel> {
+async fn record_output(
+    process: &mut FactorioProcess,
+    log_path: &Path,
+) -> Result<MsgLevel, FactorioError> {
     let mut log_file = File::create(log_path)?;
     let mut msgs = msg_stream(process);
 

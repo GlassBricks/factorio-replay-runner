@@ -155,6 +155,7 @@ async fn run_file(
         output,
     )
     .await
+    .map_err(anyhow::Error::from)
 }
 
 async fn cli_run_src(args: RunReplayFromSrcArgs) -> Result<i32> {

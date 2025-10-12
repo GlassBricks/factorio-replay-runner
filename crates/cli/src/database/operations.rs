@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use log::{error, info, warn};
 use replay_script::MsgLevel;
 
+use crate::error::ClassifiedError;
 use crate::run_replay::ReplayReport;
 
 impl Database {
@@ -165,7 +166,7 @@ impl Database {
     pub async fn process_replay_result(
         &self,
         run_id: &str,
-        result: Result<ReplayReport>,
+        result: Result<ReplayReport, ClassifiedError>,
     ) -> Result<()> {
         match result {
             Ok(report) if report.exited_successfully => match report.max_msg_level {
@@ -188,9 +189,8 @@ impl Database {
                 error!("Run {} error: {}", run_id, error_msg);
             }
             Err(e) => {
-                let error_msg = format!("Failed to process run: {:#}", e);
-                self.mark_run_error(run_id, &error_msg).await?;
-                error!("Run {} error: {}", run_id, error_msg);
+                self.mark_run_error(run_id, &e.message).await?;
+                error!("Run {} error: {}", run_id, e.message);
             }
         }
         Ok(())

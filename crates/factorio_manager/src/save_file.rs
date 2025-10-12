@@ -85,7 +85,7 @@ impl<F: Read + Seek> SaveFile<F> {
         self.zip
             .by_name(&path)
             .with_context(|| format!("{} not found in zip file", path))
-            .map_err(|e| FactorioError::InvalidSaveFile(e))
+            .map_err(FactorioError::InvalidSaveFile)
     }
 
     pub fn get_control_lua_contents(&mut self) -> Result<&str, FactorioError> {
@@ -109,7 +109,7 @@ impl<F: Read + Seek> SaveFile<F> {
         level_init_file
             .read_exact(&mut buffer)
             .context("Failed to read version bytes from level-init.dat")
-            .map_err(|e| FactorioError::InvalidVersion(e))?;
+            .map_err(FactorioError::InvalidVersion)?;
 
         let major = u16::from_le_bytes([buffer[0], buffer[1]]);
         let minor = u16::from_le_bytes([buffer[2], buffer[3]]);
@@ -195,7 +195,7 @@ mod tests {
     }
 
     fn save_name_result(names: &[&str]) -> Result<String, FactorioError> {
-        let temp_file = simple_test_zip(names).map_err(|e| FactorioError::InvalidSaveFile(e))?;
+        let temp_file = simple_test_zip(names).map_err(FactorioError::InvalidSaveFile)?;
         let mut zip = ZipArchive::new(temp_file)
             .map_err(anyhow::Error::from)
             .map_err(FactorioError::InvalidSaveFile)?;

@@ -13,11 +13,11 @@ pub fn check_expected_mods(
     if expected_mods != &actual_mod_list {
         let extra_mods = actual_mod_list
             .difference(expected_mods)
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>();
         let missing_mods = expected_mods
             .difference(&actual_mod_list)
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>();
 
         return Err(FactorioError::ModMismatch {

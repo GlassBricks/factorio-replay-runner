@@ -26,6 +26,7 @@ Script metadata is defined in YAML comments at the top of each TypeScript file i
 
 ### `factorio_manager`
 Manages Factorio installations and process execution:
+- `error.rs`: typed `FactorioError` with variants for all Factorio-related failures
 - `FactorioInstallDir`: manages Factorio version installations
 - `FactorioInstance`: runs Factorio processes
 - `SaveFile`/`WrittenSaveFile`: save file manipulation and mod injection
@@ -34,6 +35,7 @@ Manages Factorio installations and process execution:
 
 ### `zip_downloader`
 Downloads and validates zip files from various sources:
+- `DownloadError`: typed error enum with variants for download failures
 - Services: Dropbox, Google Drive, speedrun.com integration
 - Basic Security validation for safe downloads
 
@@ -42,6 +44,9 @@ Main entry point that orchestrates everything:
 - `main.rs`: CLI argument parsing with clap
 - `run_replay.rs`: core replay execution logic
 - `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig`, `DaemonConfig` - defines validation rules and configuration
+- `error.rs`: error classification system with `ClassifiedError` and `ErrorClass`
+- `speedrun_api.rs`: speedrun.com API client with typed `ApiError`
+- `run_processing.rs`: downloads and runs replays, returns `ClassifiedError`
 - `src_integration.rs`: speedrun.com integration
 - `run_lookup.rs`: queries speedrun.com API for new verified runs in a game/category
 - `daemon.rs`: daemon orchestration with graceful shutdown handling
@@ -84,6 +89,30 @@ After modifying replay scripts in `crates/replay_script/tstl_src/rules/`,
 ## Architecture and code organization
 
 - Keep it simple, YAGNI, only add the minimum needed to support current goal
+
+## Error Handling Architecture
+
+The codebase uses a type-based error classification system:
+
+1. **Per-crate typed errors**: Each crate defines semantic error enums
+   - `zip_downloader::DownloadError`: Download and validation failures
+   - `factorio_manager::FactorioError`: Factorio operations and save file errors
+   - `cli::speedrun_api::ApiError`: Speedrun.com API errors
+
+2. **CLI boundary classification**: The `cli` crate classifies errors at the boundary
+   - `ClassifiedError`: Wraps errors with classification
+   - `ErrorClass`: `Final` (submitter fault), `Retryable` (infrastructure), `RateLimited` (with optional retry delay)
+   - Each typed error has `From<ErrorType> for ClassifiedError` implementation
+
+3. **Benefits**:
+   - Type-safe error propagation within each crate
+   - Classification logic centralized in one place
+   - No fragile string parsing or heuristics
+   - Each crate documents its failure modes explicitly
+   - Better error messages with structured information
+   - Compiler enforces complete classification coverage
+
+See `docs/error-classification.md` for complete documentation.
 
 ## Configuration Files
 

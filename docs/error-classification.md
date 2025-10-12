@@ -355,22 +355,22 @@ impl From<ApiError> for ClassifiedError {
 4. **Add classification impl in `cli/src/error.rs`** ✓
    Add impl From<ApiError> for ClassifiedError with match on all variants.
 
-### Phase 5: Wire Up in CLI
+### Phase 5: Wire Up in CLI ✓
 
-1. **Update `cli/src/run_processing.rs`**
-   Change download_and_run_replay signature to return Result<ReplayReport, ClassifiedError>, wrap all error returns in appropriate ClassifiedError conversions.
+1. **Update `cli/src/run_processing.rs`** ✓
+   Changed download_and_run_replay signature to return Result<ReplayReport, ClassifiedError>. Download operations return ClassifiedError directly via From trait implementations. No downcasting needed since typed errors propagate cleanly.
 
-2. **Update `cli/src/run_replay.rs`**
-   Ensure all functions propagate FactorioError variants correctly, convert any remaining anyhow errors to appropriate typed errors.
+2. **Update `cli/src/run_replay.rs`** ✓
+   Changed run_replay and all helper functions (get_instance, perform_pre_run_checks, install_replay_script, run_and_log_replay, copy_factorio_log, record_output) to return Result<_, FactorioError> instead of anyhow::Result. All FactorioError variants now propagate correctly via ? operator.
 
-3. **Update `cli/src/database/operations.rs`**
-   Change process_replay_result signature to accept Result<ReplayReport, ClassifiedError>, extract error message from ClassifiedError for database storage.
+3. **Update `cli/src/database/operations.rs`** ✓
+   Changed process_replay_result signature to accept Result<ReplayReport, ClassifiedError>. Extracts error message from ClassifiedError.message for database storage.
 
-4. **Update `cli/src/daemon/processor.rs`**
-   Update process_run to handle ClassifiedError from download_and_run_replay.
+4. **Update `cli/src/daemon/processor.rs`** ✓
+   No changes needed - process_run passes ClassifiedError through to process_replay_result.
 
-5. **Update `CLAUDE.md`**
-   Document new error handling architecture with typed errors per crate and classification at CLI boundary.
+5. **Update `CLAUDE.md`** ✓
+   Documented new error handling architecture with typed errors per crate and classification at CLI boundary.
 
 ## Error Classification Reference
 
