@@ -63,6 +63,9 @@ pub struct StatsArgs {
 
     #[arg(long)]
     pub category_id: Option<String>,
+
+    #[arg(long)]
+    pub since: Option<String>,
 }
 
 #[derive(Args)]
@@ -128,6 +131,7 @@ async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
         status,
         game_id: args.game_id,
         category_id: args.category_id,
+        since_date: None,
         limit: args.limit,
         offset: args.offset,
     };
@@ -239,6 +243,13 @@ async fn handle_show(db: &Database, args: ShowArgs) -> Result<()> {
 }
 
 async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
+    let since_date = args
+        .since
+        .as_ref()
+        .map(|s| s.parse::<chrono::DateTime<chrono::Utc>>())
+        .transpose()
+        .context("Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01 or 2025-01-01T00:00:00Z)")?;
+
     let counts = db.count_runs_by_status().await?;
 
     let mut filter = RunFilter {
@@ -251,6 +262,9 @@ async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
     }
     if let Some(category_id) = args.category_id {
         filter.category_id = Some(category_id);
+    }
+    if let Some(since) = since_date {
+        filter.since_date = Some(since);
     }
 
     let all_runs = db.query_runs(filter).await?;

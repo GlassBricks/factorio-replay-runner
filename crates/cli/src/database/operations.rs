@@ -207,6 +207,9 @@ impl Database {
         if filter.category_id.is_some() {
             conditions.push("category_id = ?");
         }
+        if filter.since_date.is_some() {
+            conditions.push("submitted_date >= ?");
+        }
 
         for condition in conditions {
             query_parts.push(format!("AND {}", condition));
@@ -227,6 +230,9 @@ impl Database {
         }
         if let Some(category_id) = filter.category_id {
             query = query.bind(category_id);
+        }
+        if let Some(since_date) = filter.since_date {
+            query = query.bind(since_date);
         }
 
         query = query.bind(filter.limit).bind(filter.offset);
@@ -1316,6 +1322,90 @@ mod tests {
         assert_eq!(run.retry_count, 4);
         assert_eq!(run.next_retry_at, Some(new_retry_at));
         assert_eq!(run.error_class, Some("rate_limited".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_since_date_filter() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-15T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-02-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let since_date = "2024-01-10T00:00:00Z".parse().unwrap();
+        let filter = RunFilter {
+            since_date: Some(since_date),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].run_id, "run3");
+        assert_eq!(runs[1].run_id, "run2");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_since_date_and_other_filters() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-15T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat2",
+            "2024-01-20T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.mark_run_passed("run2").await.unwrap();
+
+        let since_date = "2024-01-10T00:00:00Z".parse().unwrap();
+        let filter = RunFilter {
+            since_date: Some(since_date),
+            category_id: Some("cat1".to_string()),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run2");
     }
 
     #[tokio::test]
