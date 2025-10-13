@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT status as \"status: RunStatus\", COUNT(*) as \"count: i64\"\n            FROM runs\n            GROUP BY status\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "status: RunStatus",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "count: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ec65d010f292f1a565f27dbf91db788d4949bd68fa7d36bacf11ba7ab44dd7a0"
+}

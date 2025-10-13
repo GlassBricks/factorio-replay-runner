@@ -3,6 +3,12 @@ use comfy_table::{Cell, Table};
 
 use crate::database::types::Run;
 
+pub struct RunDisplay<'a> {
+    pub run: &'a Run,
+    pub game_name: String,
+    pub category_name: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {
     Table,
@@ -21,7 +27,7 @@ impl OutputFormat {
     }
 }
 
-pub fn format_runs_as_table(runs: &[Run]) -> String {
+pub fn format_runs_as_table(runs: &[RunDisplay]) -> String {
     let mut table = Table::new();
     table.set_header(vec![
         "Run ID",
@@ -32,12 +38,9 @@ pub fn format_runs_as_table(runs: &[Run]) -> String {
         "Error Class",
     ]);
 
-    for run in runs {
-        let game_category = format!(
-            "{}/{}",
-            &run.game_id[..8.min(run.game_id.len())],
-            &run.category_id[..8.min(run.category_id.len())]
-        );
+    for run_display in runs {
+        let run = run_display.run;
+        let game_category = format!("{} / {}", run_display.game_name, run_display.category_name);
         let submitted = run.submitted_date.format("%Y-%m-%d %H:%M").to_string();
         let status = format_status(&run.status);
         let retries = if run.retry_count > 0 {
@@ -64,13 +67,15 @@ pub fn format_runs_as_json(runs: &[Run]) -> Result<String> {
     serde_json::to_string_pretty(&runs).map_err(Into::into)
 }
 
-pub fn format_runs_as_csv(runs: &[Run]) -> Result<String> {
+pub fn format_runs_as_csv(runs: &[RunDisplay]) -> Result<String> {
     let mut wtr = csv::Writer::from_writer(vec![]);
 
     wtr.write_record([
         "run_id",
         "game_id",
+        "game_name",
         "category_id",
+        "category_name",
         "submitted_date",
         "status",
         "retry_count",
@@ -81,11 +86,14 @@ pub fn format_runs_as_csv(runs: &[Run]) -> Result<String> {
         "updated_at",
     ])?;
 
-    for run in runs {
+    for run_display in runs {
+        let run = run_display.run;
         wtr.write_record([
             &run.run_id,
             &run.game_id,
+            &run_display.game_name,
             &run.category_id,
+            &run_display.category_name,
             &run.submitted_date.to_rfc3339(),
             &format_status(&run.status),
             &run.retry_count.to_string(),

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::database::connection::Database;
 use crate::database::types::{Run, RunFilter, RunStatus};
+use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
 mod formatter;
 
@@ -108,19 +109,39 @@ pub struct CleanupArgs {
 
 pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
     let db = Database::new(&args.database).await?;
+    let speedrun_client = SpeedrunClient::new().context("Failed to create speedrun client")?;
+    let speedrun_ops = SpeedrunOps::new(&speedrun_client);
 
     match args.subcommand {
-        QuerySubcommand::List(list_args) => handle_list(&db, list_args).await,
-        QuerySubcommand::Show(show_args) => handle_show(&db, show_args).await,
+        QuerySubcommand::List(list_args) => handle_list(&db, &speedrun_ops, list_args).await,
+        QuerySubcommand::Show(show_args) => handle_show(&db, &speedrun_ops, show_args).await,
         QuerySubcommand::Stats(stats_args) => handle_stats(&db, stats_args).await,
         QuerySubcommand::Queue(queue_args) => handle_queue(&db, queue_args).await,
-        QuerySubcommand::Errors(errors_args) => handle_errors(&db, errors_args).await,
+        QuerySubcommand::Errors(errors_args) => {
+            handle_errors(&db, &speedrun_ops, errors_args).await
+        }
         QuerySubcommand::Reset(reset_args) => handle_reset(&db, reset_args).await,
         QuerySubcommand::Cleanup(cleanup_args) => handle_cleanup(&db, cleanup_args).await,
     }
 }
 
-async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
+async fn resolve_game_category(
+    ops: &SpeedrunOps,
+    game_id: &str,
+    category_id: &str,
+) -> (String, String) {
+    let game_name = ops
+        .get_game_name(game_id)
+        .await
+        .unwrap_or_else(|_| game_id.to_string());
+    let category_name = ops
+        .get_category_name(category_id)
+        .await
+        .unwrap_or_else(|_| category_id.to_string());
+    (game_name, category_name)
+}
+
+async fn handle_list(db: &Database, ops: &SpeedrunOps, args: ListArgs) -> Result<()> {
     let status = args
         .status
         .as_ref()
@@ -146,7 +167,7 @@ async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
             formatter::OutputFormat::Json => println!("[]"),
             formatter::OutputFormat::Csv => {
                 println!(
-                    "run_id,game_id,category_id,submitted_date,status,retry_count,error_class,error_message,next_retry_at,created_at,updated_at"
+                    "run_id,game_id,game_name,category_id,category_name,submitted_date,status,retry_count,error_class,error_message,next_retry_at,created_at,updated_at"
                 )
             }
             formatter::OutputFormat::Table => {
@@ -157,9 +178,24 @@ async fn handle_list(db: &Database, args: ListArgs) -> Result<()> {
     }
 
     let output = match format {
-        formatter::OutputFormat::Table => formatter::format_runs_as_table(&runs),
+        formatter::OutputFormat::Table | formatter::OutputFormat::Csv => {
+            let mut run_displays = Vec::new();
+            for run in &runs {
+                let (game_name, category_name) =
+                    resolve_game_category(ops, &run.game_id, &run.category_id).await;
+                run_displays.push(formatter::RunDisplay {
+                    run,
+                    game_name,
+                    category_name,
+                });
+            }
+            match format {
+                formatter::OutputFormat::Table => formatter::format_runs_as_table(&run_displays),
+                formatter::OutputFormat::Csv => formatter::format_runs_as_csv(&run_displays)?,
+                _ => unreachable!(),
+            }
+        }
         formatter::OutputFormat::Json => formatter::format_runs_as_json(&runs)?,
-        formatter::OutputFormat::Csv => formatter::format_runs_as_csv(&runs)?,
     };
 
     println!("{}", output);
@@ -189,7 +225,7 @@ fn format_status(status: &RunStatus) -> String {
     }
 }
 
-async fn handle_show(db: &Database, args: ShowArgs) -> Result<()> {
+async fn handle_show(db: &Database, ops: &SpeedrunOps, args: ShowArgs) -> Result<()> {
     let run = db
         .get_run(&args.run_id)
         .await?
@@ -200,12 +236,15 @@ async fn handle_show(db: &Database, args: ShowArgs) -> Result<()> {
         return Ok(());
     }
 
+    let (game_name, category_name) =
+        resolve_game_category(ops, &run.game_id, &run.category_id).await;
+
     println!("Run Details");
     println!("===========");
     println!();
     println!("Run ID:          {}", run.run_id);
-    println!("Game ID:         {}", run.game_id);
-    println!("Category ID:     {}", run.category_id);
+    println!("Game:            {} ({})", game_name, run.game_id);
+    println!("Category:        {} ({})", category_name, run.category_id);
     println!(
         "Submitted:       {}",
         run.submitted_date.format("%Y-%m-%d %H:%M:%S UTC")
@@ -359,7 +398,7 @@ async fn handle_queue(db: &Database, _args: QueueArgs) -> Result<()> {
     Ok(())
 }
 
-async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
+async fn handle_errors(db: &Database, ops: &SpeedrunOps, args: ErrorsArgs) -> Result<()> {
     let filter = RunFilter {
         status: Some(RunStatus::Error),
         limit: 1000,
@@ -380,18 +419,20 @@ async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
     if let Some(group_by) = &args.group_by {
         handle_grouped_errors(&error_runs, group_by, args.limit)
     } else {
-        handle_ungrouped_errors(&error_runs, args.limit)
+        handle_ungrouped_errors(db, ops, &error_runs, args.limit).await
     }
 }
 
-fn handle_ungrouped_errors(error_runs: &[Run], limit: u32) -> Result<()> {
+async fn handle_ungrouped_errors(db: &Database, ops: &SpeedrunOps, error_runs: &[Run], limit: u32) -> Result<()> {
     println!("Recent Errors");
     println!("=============");
     println!();
 
     for run in error_runs.iter().take(limit as usize) {
+        let (game_name, category_name) =
+            resolve_game_category(ops, &run.game_id, &run.category_id).await;
         println!("Run ID:       {}", run.run_id);
-        println!("Game/Cat:     {}/{}", run.game_id, run.category_id);
+        println!("Game/Cat:     {} / {}", game_name, category_name);
         println!(
             "Error Class:  {}",
             run.error_class.as_deref().unwrap_or("N/A")
