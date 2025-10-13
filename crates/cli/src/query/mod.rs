@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
 use crate::database::connection::Database;
-use crate::database::types::{RunFilter, RunStatus};
+use crate::database::types::{Run, RunFilter, RunStatus};
 
 mod formatter;
 
@@ -78,6 +78,9 @@ pub struct ErrorsArgs {
 
     #[arg(long)]
     pub error_class: Option<String>,
+
+    #[arg(long)]
+    pub group_by: Option<String>,
 }
 
 #[derive(Args)]
@@ -357,20 +360,16 @@ async fn handle_queue(db: &Database, _args: QueueArgs) -> Result<()> {
 }
 
 async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
-    let mut filter = RunFilter {
+    let filter = RunFilter {
         status: Some(RunStatus::Error),
-        limit: args.limit,
+        limit: 1000,
         ..Default::default()
     };
 
-    if args.error_class.is_some() {
-        filter.limit = 1000;
-    }
-
     let mut error_runs = db.query_runs(filter).await?;
 
-    if let Some(error_class) = args.error_class {
-        error_runs.retain(|r| r.error_class.as_deref() == Some(&error_class));
+    if let Some(error_class) = &args.error_class {
+        error_runs.retain(|r| r.error_class.as_deref() == Some(error_class));
     }
 
     if error_runs.is_empty() {
@@ -378,11 +377,19 @@ async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
         return Ok(());
     }
 
+    if let Some(group_by) = &args.group_by {
+        handle_grouped_errors(&error_runs, group_by, args.limit)
+    } else {
+        handle_ungrouped_errors(&error_runs, args.limit)
+    }
+}
+
+fn handle_ungrouped_errors(error_runs: &[Run], limit: u32) -> Result<()> {
     println!("Recent Errors");
     println!("=============");
     println!();
 
-    for run in error_runs.iter().take(args.limit as usize) {
+    for run in error_runs.iter().take(limit as usize) {
         println!("Run ID:       {}", run.run_id);
         println!("Game/Cat:     {}/{}", run.game_id, run.category_id);
         println!(
@@ -392,6 +399,160 @@ async fn handle_errors(db: &Database, args: ErrorsArgs) -> Result<()> {
         println!("Retry Count:  {}", run.retry_count);
         if let Some(error_msg) = &run.error_message {
             println!("Error:        {}", error_msg);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn handle_grouped_errors(error_runs: &[Run], group_by: &str, limit: u32) -> Result<()> {
+    match group_by {
+        "message" => group_by_error_message(error_runs, limit),
+        "class" => group_by_error_class(error_runs, limit),
+        "category" => group_by_category(error_runs, limit),
+        _ => Err(anyhow::anyhow!(
+            "Invalid group-by value: '{}'. Valid options are: message, class, category",
+            group_by
+        )),
+    }
+}
+
+fn group_by_error_message(error_runs: &[Run], limit: u32) -> Result<()> {
+    use std::collections::HashMap;
+
+    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
+
+    for run in error_runs {
+        let key = run
+            .error_message
+            .as_deref()
+            .unwrap_or("(no message)")
+            .to_string();
+        groups.entry(key).or_default().push(run);
+    }
+
+    let mut sorted_groups: Vec<_> = groups.iter().collect();
+    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    println!("Errors Grouped by Message");
+    println!("=========================");
+    println!();
+    println!("Total unique error messages: {}", sorted_groups.len());
+    println!();
+
+    for (message, runs) in sorted_groups.iter().take(limit as usize) {
+        println!("Count: {} runs", runs.len());
+        println!("Message: {}", message);
+        println!("Example runs:");
+        for run in runs.iter().take(3) {
+            println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+        }
+        if runs.len() > 3 {
+            println!("  ... and {} more", runs.len() - 3);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn group_by_error_class(error_runs: &[Run], limit: u32) -> Result<()> {
+    use std::collections::HashMap;
+
+    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
+
+    for run in error_runs {
+        let key = run
+            .error_class
+            .as_deref()
+            .unwrap_or("(no class)")
+            .to_string();
+        groups.entry(key).or_default().push(run);
+    }
+
+    let mut sorted_groups: Vec<_> = groups.iter().collect();
+    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    println!("Errors Grouped by Class");
+    println!("=======================");
+    println!();
+    println!("Total unique error classes: {}", sorted_groups.len());
+    println!();
+
+    for (class, runs) in sorted_groups.iter().take(limit as usize) {
+        println!("Class: {}", class);
+        println!("Count: {} runs", runs.len());
+        println!("Example runs:");
+        for run in runs.iter().take(3) {
+            println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+            if let Some(msg) = &run.error_message {
+                let preview = msg.chars().take(60).collect::<String>();
+                println!(
+                    "    {}",
+                    if msg.len() > 60 {
+                        format!("{}...", preview)
+                    } else {
+                        preview
+                    }
+                );
+            }
+        }
+        if runs.len() > 3 {
+            println!("  ... and {} more", runs.len() - 3);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn group_by_category(error_runs: &[Run], limit: u32) -> Result<()> {
+    use std::collections::HashMap;
+
+    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
+
+    for run in error_runs {
+        let key = format!("{}/{}", run.game_id, run.category_id);
+        groups.entry(key).or_default().push(run);
+    }
+
+    let mut sorted_groups: Vec<_> = groups.iter().collect();
+    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    println!("Errors Grouped by Game/Category");
+    println!("================================");
+    println!();
+    println!("Total unique game/categories: {}", sorted_groups.len());
+    println!();
+
+    for (category, runs) in sorted_groups.iter().take(limit as usize) {
+        println!("Game/Category: {}", category);
+        println!("Count: {} runs", runs.len());
+
+        let mut error_class_counts: HashMap<String, usize> = HashMap::new();
+        for run in runs.iter() {
+            let class = run.error_class.as_deref().unwrap_or("(no class)");
+            *error_class_counts.entry(class.to_string()).or_insert(0) += 1;
+        }
+
+        println!("Error classes:");
+        let mut class_list: Vec<_> = error_class_counts.iter().collect();
+        class_list.sort_by(|a, b| b.1.cmp(a.1));
+        for (class, count) in class_list {
+            println!("  - {}: {} runs", class, count);
+        }
+
+        println!("Example runs:");
+        for run in runs.iter().take(3) {
+            println!(
+                "  - {} ({})",
+                run.run_id,
+                run.error_class.as_deref().unwrap_or("N/A")
+            );
+        }
+        if runs.len() > 3 {
+            println!("  ... and {} more", runs.len() - 3);
         }
         println!();
     }
@@ -494,4 +655,102 @@ async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
     println!("Successfully deleted {} run(s)", deleted_count);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::types::Run;
+    use chrono::Utc;
+
+    fn create_test_run(
+        run_id: &str,
+        game_id: &str,
+        category_id: &str,
+        error_class: Option<&str>,
+        error_message: Option<&str>,
+    ) -> Run {
+        let now = Utc::now();
+        Run {
+            run_id: run_id.to_string(),
+            game_id: game_id.to_string(),
+            category_id: category_id.to_string(),
+            submitted_date: now,
+            status: RunStatus::Error,
+            error_message: error_message.map(String::from),
+            retry_count: 0,
+            next_retry_at: None,
+            error_class: error_class.map(String::from),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn test_handle_grouped_errors_invalid_group_by() {
+        let runs = vec![create_test_run(
+            "run1",
+            "game1",
+            "cat1",
+            Some("final"),
+            Some("error message"),
+        )];
+
+        let result = handle_grouped_errors(&runs, "invalid", 10);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid group-by value")
+        );
+    }
+
+    #[test]
+    fn test_group_by_error_message() {
+        let runs = vec![
+            create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
+            create_test_run("run2", "game1", "cat1", Some("final"), Some("error A")),
+            create_test_run("run3", "game1", "cat1", Some("final"), Some("error B")),
+        ];
+
+        let result = group_by_error_message(&runs, 10);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_group_by_error_class() {
+        let runs = vec![
+            create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
+            create_test_run("run2", "game1", "cat1", Some("retryable"), Some("error B")),
+            create_test_run("run3", "game1", "cat1", Some("final"), Some("error C")),
+        ];
+
+        let result = group_by_error_class(&runs, 10);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_group_by_category() {
+        let runs = vec![
+            create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
+            create_test_run("run2", "game1", "cat1", Some("final"), Some("error B")),
+            create_test_run("run3", "game2", "cat2", Some("retryable"), Some("error C")),
+        ];
+
+        let result = group_by_category(&runs, 10);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_group_by_handles_none_values() {
+        let runs = vec![
+            create_test_run("run1", "game1", "cat1", None, None),
+            create_test_run("run2", "game1", "cat1", Some("final"), Some("error")),
+        ];
+
+        assert!(group_by_error_message(&runs, 10).is_ok());
+        assert!(group_by_error_class(&runs, 10).is_ok());
+        assert!(group_by_category(&runs, 10).is_ok());
+    }
 }
