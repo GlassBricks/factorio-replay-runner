@@ -225,6 +225,46 @@ fn format_status(status: &RunStatus) -> String {
     }
 }
 
+fn parse_datetime(date_str: &str) -> Result<chrono::DateTime<chrono::Utc>> {
+    date_str
+        .parse()
+        .context("Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2024-01-01)")
+}
+
+fn group_and_display<F>(
+    error_runs: &[Run],
+    limit: u32,
+    title: &str,
+    unique_label: &str,
+    key_extractor: F,
+    display_group: impl Fn(&str, &[&Run]),
+) -> Result<()>
+where
+    F: Fn(&Run) -> String,
+{
+    use std::collections::HashMap;
+
+    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
+    for run in error_runs {
+        groups.entry(key_extractor(run)).or_default().push(run);
+    }
+
+    let mut sorted_groups: Vec<_> = groups.iter().collect();
+    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    println!("{}", title);
+    println!("{}", "=".repeat(title.len()));
+    println!();
+    println!("Total {}: {}", unique_label, sorted_groups.len());
+    println!();
+
+    for (key, runs) in sorted_groups.iter().take(limit as usize) {
+        display_group(key, runs);
+    }
+
+    Ok(())
+}
+
 async fn handle_show(db: &Database, ops: &SpeedrunOps, args: ShowArgs) -> Result<()> {
     let run = db
         .get_run(&args.run_id)
@@ -288,9 +328,8 @@ async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
     let since_date = args
         .since
         .as_ref()
-        .map(|s| s.parse::<chrono::DateTime<chrono::Utc>>())
-        .transpose()
-        .context("Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01 or 2025-01-01T00:00:00Z)")?;
+        .map(|s| parse_datetime(s))
+        .transpose()?;
 
     let counts = db.count_runs_by_status().await?;
 
@@ -460,145 +499,110 @@ fn handle_grouped_errors(error_runs: &[Run], group_by: &str, limit: u32) -> Resu
 }
 
 fn group_by_error_message(error_runs: &[Run], limit: u32) -> Result<()> {
-    use std::collections::HashMap;
-
-    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
-
-    for run in error_runs {
-        let key = run
-            .error_message
-            .as_deref()
-            .unwrap_or("(no message)")
-            .to_string();
-        groups.entry(key).or_default().push(run);
-    }
-
-    let mut sorted_groups: Vec<_> = groups.iter().collect();
-    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-
-    println!("Errors Grouped by Message");
-    println!("=========================");
-    println!();
-    println!("Total unique error messages: {}", sorted_groups.len());
-    println!();
-
-    for (message, runs) in sorted_groups.iter().take(limit as usize) {
-        println!("Count: {} runs", runs.len());
-        println!("Message: {}", message);
-        println!("Example runs:");
-        for run in runs.iter().take(3) {
-            println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
-        }
-        if runs.len() > 3 {
-            println!("  ... and {} more", runs.len() - 3);
-        }
-        println!();
-    }
-
-    Ok(())
+    group_and_display(
+        error_runs,
+        limit,
+        "Errors Grouped by Message",
+        "unique error messages",
+        |run| {
+            run.error_message
+                .as_deref()
+                .unwrap_or("(no message)")
+                .to_string()
+        },
+        |message, runs| {
+            println!("Count: {} runs", runs.len());
+            println!("Message: {}", message);
+            println!("Example runs:");
+            for run in runs.iter().take(3) {
+                println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+            }
+            if runs.len() > 3 {
+                println!("  ... and {} more", runs.len() - 3);
+            }
+            println!();
+        },
+    )
 }
 
 fn group_by_error_class(error_runs: &[Run], limit: u32) -> Result<()> {
-    use std::collections::HashMap;
-
-    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
-
-    for run in error_runs {
-        let key = run
-            .error_class
-            .as_deref()
-            .unwrap_or("(no class)")
-            .to_string();
-        groups.entry(key).or_default().push(run);
-    }
-
-    let mut sorted_groups: Vec<_> = groups.iter().collect();
-    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-
-    println!("Errors Grouped by Class");
-    println!("=======================");
-    println!();
-    println!("Total unique error classes: {}", sorted_groups.len());
-    println!();
-
-    for (class, runs) in sorted_groups.iter().take(limit as usize) {
-        println!("Class: {}", class);
-        println!("Count: {} runs", runs.len());
-        println!("Example runs:");
-        for run in runs.iter().take(3) {
-            println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
-            if let Some(msg) = &run.error_message {
-                let preview = msg.chars().take(60).collect::<String>();
-                println!(
-                    "    {}",
-                    if msg.len() > 60 {
-                        format!("{}...", preview)
-                    } else {
-                        preview
-                    }
-                );
+    group_and_display(
+        error_runs,
+        limit,
+        "Errors Grouped by Class",
+        "unique error classes",
+        |run| {
+            run.error_class
+                .as_deref()
+                .unwrap_or("(no class)")
+                .to_string()
+        },
+        |class, runs| {
+            println!("Class: {}", class);
+            println!("Count: {} runs", runs.len());
+            println!("Example runs:");
+            for run in runs.iter().take(3) {
+                println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+                if let Some(msg) = &run.error_message {
+                    let preview = msg.chars().take(60).collect::<String>();
+                    println!(
+                        "    {}",
+                        if msg.len() > 60 {
+                            format!("{}...", preview)
+                        } else {
+                            preview
+                        }
+                    );
+                }
             }
-        }
-        if runs.len() > 3 {
-            println!("  ... and {} more", runs.len() - 3);
-        }
-        println!();
-    }
-
-    Ok(())
+            if runs.len() > 3 {
+                println!("  ... and {} more", runs.len() - 3);
+            }
+            println!();
+        },
+    )
 }
 
 fn group_by_category(error_runs: &[Run], limit: u32) -> Result<()> {
     use std::collections::HashMap;
 
-    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
+    group_and_display(
+        error_runs,
+        limit,
+        "Errors Grouped by Game/Category",
+        "unique game/categories",
+        |run| format!("{}/{}", run.game_id, run.category_id),
+        |category, runs| {
+            println!("Game/Category: {}", category);
+            println!("Count: {} runs", runs.len());
 
-    for run in error_runs {
-        let key = format!("{}/{}", run.game_id, run.category_id);
-        groups.entry(key).or_default().push(run);
-    }
+            let mut error_class_counts: HashMap<String, usize> = HashMap::new();
+            for run in runs.iter() {
+                let class = run.error_class.as_deref().unwrap_or("(no class)");
+                *error_class_counts.entry(class.to_string()).or_insert(0) += 1;
+            }
 
-    let mut sorted_groups: Vec<_> = groups.iter().collect();
-    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+            println!("Error classes:");
+            let mut class_list: Vec<_> = error_class_counts.iter().collect();
+            class_list.sort_by(|a, b| b.1.cmp(a.1));
+            for (class, count) in class_list {
+                println!("  - {}: {} runs", class, count);
+            }
 
-    println!("Errors Grouped by Game/Category");
-    println!("================================");
-    println!();
-    println!("Total unique game/categories: {}", sorted_groups.len());
-    println!();
-
-    for (category, runs) in sorted_groups.iter().take(limit as usize) {
-        println!("Game/Category: {}", category);
-        println!("Count: {} runs", runs.len());
-
-        let mut error_class_counts: HashMap<String, usize> = HashMap::new();
-        for run in runs.iter() {
-            let class = run.error_class.as_deref().unwrap_or("(no class)");
-            *error_class_counts.entry(class.to_string()).or_insert(0) += 1;
-        }
-
-        println!("Error classes:");
-        let mut class_list: Vec<_> = error_class_counts.iter().collect();
-        class_list.sort_by(|a, b| b.1.cmp(a.1));
-        for (class, count) in class_list {
-            println!("  - {}: {} runs", class, count);
-        }
-
-        println!("Example runs:");
-        for run in runs.iter().take(3) {
-            println!(
-                "  - {} ({})",
-                run.run_id,
-                run.error_class.as_deref().unwrap_or("N/A")
-            );
-        }
-        if runs.len() > 3 {
-            println!("  ... and {} more", runs.len() - 3);
-        }
-        println!();
-    }
-
-    Ok(())
+            println!("Example runs:");
+            for run in runs.iter().take(3) {
+                println!(
+                    "  - {} ({})",
+                    run.run_id,
+                    run.error_class.as_deref().unwrap_or("N/A")
+                );
+            }
+            if runs.len() > 3 {
+                println!("  ... and {} more", runs.len() - 3);
+            }
+            println!();
+        },
+    )
 }
 
 async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
@@ -626,10 +630,7 @@ async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
     let before_date = args
         .before
         .as_ref()
-        .map(|s| {
-            s.parse::<chrono::DateTime<chrono::Utc>>()
-                .context("Invalid date format. Use ISO 8601 format (e.g., 2024-01-01T00:00:00Z)")
-        })
+        .map(|s| parse_datetime(s))
         .transpose()?;
 
     let status = args
