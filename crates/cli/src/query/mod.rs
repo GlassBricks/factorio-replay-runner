@@ -24,6 +24,7 @@ pub enum QuerySubcommand {
     Queue(QueueArgs),
     Errors(ErrorsArgs),
     Reset(ResetArgs),
+    Cleanup(CleanupArgs),
 }
 
 #[derive(Args)]
@@ -84,6 +85,21 @@ pub struct ResetArgs {
     pub clear_error: bool,
 }
 
+#[derive(Args)]
+pub struct CleanupArgs {
+    #[arg(long)]
+    pub before: Option<String>,
+
+    #[arg(long)]
+    pub status: Option<String>,
+
+    #[arg(long)]
+    pub dry_run: bool,
+
+    #[arg(long)]
+    pub force: bool,
+}
+
 pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
     let db = Database::new(&args.database).await?;
 
@@ -94,6 +110,7 @@ pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
         QuerySubcommand::Queue(queue_args) => handle_queue(&db, queue_args).await,
         QuerySubcommand::Errors(errors_args) => handle_errors(&db, errors_args).await,
         QuerySubcommand::Reset(reset_args) => handle_reset(&db, reset_args).await,
+        QuerySubcommand::Cleanup(cleanup_args) => handle_cleanup(&db, cleanup_args).await,
     }
 }
 
@@ -385,6 +402,82 @@ async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
     if args.clear_error {
         println!("Cleared retry fields");
     }
+
+    Ok(())
+}
+
+async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
+    let before_date = args
+        .before
+        .as_ref()
+        .map(|s| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .context("Invalid date format. Use ISO 8601 format (e.g., 2024-01-01T00:00:00Z)")
+        })
+        .transpose()?;
+
+    let status = args
+        .status
+        .as_ref()
+        .map(|s| parse_status(s))
+        .transpose()
+        .context("Invalid status value")?;
+
+    if before_date.is_none() && status.is_none() {
+        return Err(anyhow::anyhow!(
+            "At least one filter must be specified (--before or --status)"
+        ));
+    }
+
+    let runs_to_delete = db.query_runs_for_deletion(before_date, status).await?;
+
+    if runs_to_delete.is_empty() {
+        println!("No runs match the specified criteria");
+        return Ok(());
+    }
+
+    println!(
+        "Found {} run(s) matching the criteria:",
+        runs_to_delete.len()
+    );
+    println!();
+
+    for run in &runs_to_delete {
+        println!(
+            "  {} - {} - {} - {}",
+            run.run_id,
+            run.game_id,
+            run.category_id,
+            format_status(&run.status)
+        );
+    }
+    println!();
+
+    if args.dry_run {
+        println!("Dry run mode - no runs were deleted");
+        return Ok(());
+    }
+
+    if !args.force {
+        println!(
+            "Are you sure you want to delete {} run(s)? (y/N): ",
+            runs_to_delete.len()
+        );
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read user input")?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Deletion cancelled");
+            return Ok(());
+        }
+    }
+
+    let run_ids: Vec<String> = runs_to_delete.iter().map(|r| r.run_id.clone()).collect();
+    let deleted_count = db.delete_runs(&run_ids).await?;
+
+    println!("Successfully deleted {} run(s)", deleted_count);
 
     Ok(())
 }
