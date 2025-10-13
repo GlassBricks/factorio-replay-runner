@@ -419,11 +419,11 @@ async fn handle_errors(db: &Database, ops: &SpeedrunOps, args: ErrorsArgs) -> Re
     if let Some(group_by) = &args.group_by {
         handle_grouped_errors(&error_runs, group_by, args.limit)
     } else {
-        handle_ungrouped_errors(db, ops, &error_runs, args.limit).await
+        handle_ungrouped_errors(ops, &error_runs, args.limit).await
     }
 }
 
-async fn handle_ungrouped_errors(db: &Database, ops: &SpeedrunOps, error_runs: &[Run], limit: u32) -> Result<()> {
+async fn handle_ungrouped_errors(ops: &SpeedrunOps, error_runs: &[Run], limit: u32) -> Result<()> {
     println!("Recent Errors");
     println!("=============");
     println!();
