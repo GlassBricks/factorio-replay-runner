@@ -6,8 +6,8 @@ use log::{error, info, warn};
 use replay_script::MsgLevel;
 use sqlx::Row;
 
+use crate::daemon::retry::{RetryConfig, calculate_next_retry, error_class_to_string};
 use crate::error::ClassifiedError;
-use crate::retry::{RetryConfig, calculate_next_retry, error_class_to_string};
 use crate::run_replay::ReplayReport;
 
 impl Database {
@@ -830,8 +830,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_replay_result_with_retry() {
+        use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
-        use crate::retry::RetryConfig;
 
         let db = Database::in_memory().await.unwrap();
 
@@ -858,8 +858,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_replay_result_final_error() {
+        use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
-        use crate::retry::RetryConfig;
 
         let db = Database::in_memory().await.unwrap();
 
@@ -886,7 +886,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_replay_result_success_clears_retry() {
-        use crate::retry::RetryConfig;
+        use crate::daemon::retry::RetryConfig;
         use replay_script::MsgLevel;
 
         let db = Database::in_memory().await.unwrap();
@@ -922,8 +922,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_workflow_end_to_end() {
+        use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
-        use crate::retry::RetryConfig;
         use replay_script::MsgLevel;
 
         let db = Database::in_memory().await.unwrap();
@@ -977,8 +977,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_permanent_failure_after_max_attempts() {
+        use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
-        use crate::retry::RetryConfig;
 
         let db = Database::in_memory().await.unwrap();
 
@@ -1025,8 +1025,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limited_retry_scheduling() {
+        use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
-        use crate::retry::RetryConfig;
         use std::time::Duration;
 
         let db = Database::in_memory().await.unwrap();

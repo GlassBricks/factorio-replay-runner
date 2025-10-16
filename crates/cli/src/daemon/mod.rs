@@ -3,22 +3,25 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
-use crate::config::{DaemonConfig, SrcRunRules};
-use crate::database::connection::Database;
-use crate::run_processing::RunProcessingContext;
-use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
+pub mod config;
+pub mod database;
+pub mod poller;
+pub mod processor;
+pub mod retry;
+pub mod run_processing;
+pub mod speedrun_api;
 
-mod poller;
-mod processor;
-
+pub use config::{DaemonConfig, SrcRunRules};
 pub use poller::{poll_speedrun_com, poll_speedrun_com_loop};
 pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
+pub use run_processing::{RunProcessingContext, download_and_run_replay};
+pub use speedrun_api::{SpeedrunClient, SpeedrunOps};
 
 pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
     info!("Monitoring {} game(s)", src_rules.games.len());
 
-    let db = Database::new(&config.database_path)
+    let db = database::connection::Database::new(&config.database_path)
         .await
         .context("Failed to initialize database")?;
 

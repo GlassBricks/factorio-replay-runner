@@ -4,8 +4,8 @@ use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::Notify;
 
-use crate::config::PollingConfig;
-use crate::run_processing::{RunProcessingContext, poll_game_category};
+use super::config::PollingConfig;
+use super::run_processing::{RunProcessingContext, poll_game_category};
 
 pub async fn poll_speedrun_com_loop(
     ctx: RunProcessingContext,
@@ -94,8 +94,10 @@ async fn poll_category(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::connection::Database;
-    use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
+    use crate::daemon::config::SrcRunRules;
+    use crate::daemon::database::connection::Database;
+    use crate::daemon::retry::RetryConfig;
+    use crate::daemon::speedrun_api::{SpeedrunClient, SpeedrunOps};
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -103,7 +105,7 @@ mod tests {
         let db = Database::in_memory().await.unwrap();
         let client = SpeedrunClient::new().unwrap();
         let speedrun_ops = SpeedrunOps::new(&client);
-        let src_rules = crate::config::SrcRunRules {
+        let src_rules = SrcRunRules {
             games: HashMap::new(),
         };
         RunProcessingContext {
@@ -112,14 +114,14 @@ mod tests {
             src_rules,
             install_dir: PathBuf::from("./factorio_installs"),
             output_dir: PathBuf::from("./daemon_runs"),
-            retry_config: crate::retry::RetryConfig::default(),
+            retry_config: RetryConfig::default(),
         }
     }
 
     #[tokio::test]
     async fn test_poll_with_no_game_configs() {
         let ctx = create_test_ctx().await;
-        let config = crate::config::PollingConfig {
+        let config = PollingConfig {
             poll_interval_seconds: 3600,
             cutoff_date: "2024-01-01T00:00:00Z".to_string(),
         };

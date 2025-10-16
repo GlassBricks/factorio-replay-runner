@@ -1,7 +1,7 @@
 use anyhow::Result;
 use comfy_table::{Cell, Table};
 
-use crate::database::types::Run;
+use crate::daemon::database::types::Run;
 
 pub struct RunDisplay<'a> {
     pub run: &'a Run,
@@ -115,8 +115,8 @@ pub fn format_run_as_json(run: &Run) -> Result<String> {
     serde_json::to_string_pretty(&run).map_err(Into::into)
 }
 
-fn format_status(status: &crate::database::types::RunStatus) -> String {
-    use crate::database::types::RunStatus;
+fn format_status(status: &crate::daemon::database::types::RunStatus) -> String {
+    use crate::daemon::database::types::RunStatus;
     match status {
         RunStatus::Discovered => "discovered".to_string(),
         RunStatus::Processing => "processing".to_string(),

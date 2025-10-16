@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
-use crate::database::connection::Database;
-use crate::database::types::{Run, RunFilter, RunStatus};
-use crate::speedrun_api::{SpeedrunClient, SpeedrunOps};
+use crate::daemon::database::connection::Database;
+use crate::daemon::database::types::{Run, RunFilter, RunStatus};
+use crate::daemon::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
 mod formatter;
 
@@ -226,9 +226,9 @@ fn format_status(status: &RunStatus) -> String {
 }
 
 fn parse_datetime(date_str: &str) -> Result<chrono::DateTime<chrono::Utc>> {
-    date_str
-        .parse()
-        .context("Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2024-01-01)")
+    date_str.parse().context(
+        "Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2024-01-01)",
+    )
 }
 
 fn group_and_display<F>(
@@ -325,11 +325,7 @@ async fn handle_show(db: &Database, ops: &SpeedrunOps, args: ShowArgs) -> Result
 }
 
 async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
-    let since_date = args
-        .since
-        .as_ref()
-        .map(|s| parse_datetime(s))
-        .transpose()?;
+    let since_date = args.since.as_ref().map(|s| parse_datetime(s)).transpose()?;
 
     let counts = db.count_runs_by_status().await?;
 
@@ -702,7 +698,7 @@ async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::types::Run;
+    use crate::daemon::database::types::Run;
     use chrono::Utc;
 
     fn create_test_run(

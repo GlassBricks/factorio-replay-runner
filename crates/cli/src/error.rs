@@ -4,7 +4,7 @@ use std::time::Duration;
 use factorio_manager::error::FactorioError;
 use zip_downloader::DownloadError;
 
-use crate::speedrun_api::ApiError;
+use crate::daemon::speedrun_api::ApiError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorClass {

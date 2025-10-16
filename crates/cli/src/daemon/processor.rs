@@ -3,8 +3,8 @@ use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::Notify;
 
-use crate::database::types::Run;
-use crate::run_processing::{RunProcessingContext, download_and_run_replay};
+use super::database::types::Run;
+use super::run_processing::{RunProcessingContext, download_and_run_replay};
 
 #[derive(Debug)]
 pub enum ProcessResult {
@@ -100,17 +100,18 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::SrcRunRules;
-    use crate::database::connection::Database;
-    use crate::database::types::NewRun;
-    use crate::speedrun_api::SpeedrunClient;
+    use crate::daemon::config::SrcRunRules;
+    use crate::daemon::database::connection::Database;
+    use crate::daemon::database::types::NewRun;
+    use crate::daemon::retry::RetryConfig;
+    use crate::daemon::speedrun_api::{SpeedrunClient, SpeedrunOps};
     use std::collections::HashMap;
     use std::path::PathBuf;
 
     async fn create_test_ctx() -> RunProcessingContext {
         let db = Database::in_memory().await.unwrap();
         let client = SpeedrunClient::new().unwrap();
-        let speedrun_ops = crate::speedrun_api::SpeedrunOps::new(&client);
+        let speedrun_ops = SpeedrunOps::new(&client);
         let src_rules = SrcRunRules {
             games: HashMap::new(),
         };
@@ -120,7 +121,7 @@ mod tests {
             src_rules,
             install_dir: PathBuf::from("/tmp/test"),
             output_dir: PathBuf::from("/tmp/test_output"),
-            retry_config: crate::retry::RetryConfig::default(),
+            retry_config: RetryConfig::default(),
         }
     }
 

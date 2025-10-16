@@ -13,14 +13,15 @@ use zip_downloader::services::dropbox::DropboxService;
 use zip_downloader::services::gdrive::GoogleDriveService;
 use zip_downloader::services::speedrun::SpeedrunService;
 
-use crate::config::{RunRules, SrcRunRules};
-use crate::database::connection::Database;
-use crate::database::types::NewRun;
+use crate::config::RunRules;
+use crate::daemon::config::SrcRunRules;
+use crate::daemon::database::connection::Database;
+use crate::daemon::database::types::NewRun;
+use crate::daemon::retry::RetryConfig;
+use crate::daemon::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
 use crate::error::ClassifiedError;
 use crate::error::ErrorClass;
-use crate::retry::RetryConfig;
 use crate::run_replay::{ReplayReport, run_replay};
-use crate::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
 
 const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
 
@@ -116,7 +117,7 @@ pub async fn fetch_run_details(
     let submitted_date = run
         .submitted
         .ok_or_else(|| ApiError::MissingField("Run has no submitted date".to_string()))?;
-    let submitted_date = crate::speedrun_api::parse_datetime(&submitted_date)?;
+    let submitted_date = super::speedrun_api::parse_datetime(&submitted_date)?;
 
     Ok((run_id, game_id, category_id, submitted_date))
 }
@@ -144,7 +145,7 @@ pub async fn poll_game_category(
         .into_iter()
         .filter_map(|run| {
             let submitted_dt = run.submitted?;
-            let submitted_date = crate::speedrun_api::parse_datetime(&submitted_dt).ok()?;
+            let submitted_date = super::speedrun_api::parse_datetime(&submitted_dt).ok()?;
             (submitted_date > *cutoff_date)
                 .then(|| NewRun::new(run.id, game_id, category_id, submitted_date))
         })

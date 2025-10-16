@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use config::{DaemonConfig, RunRules, SrcRunRules};
+use config::RunRules;
 use factorio_manager::{
     factorio_install_dir::FactorioInstallDir,
     process_manager::GLOBAL_PROCESS_MANAGER,
@@ -15,17 +15,13 @@ use std::{
     sync::Arc,
 };
 
-use crate::run_processing::{RunProcessingContext, download_and_run_replay};
+use crate::daemon::{RunProcessingContext, SrcRunRules, download_and_run_replay};
 
 mod config;
 mod daemon;
-mod database;
 mod error;
 mod query;
-mod retry;
-mod run_processing;
 mod run_replay;
-mod speedrun_api;
 
 #[derive(Parser)]
 #[command(name = "factorio-replay-cli")]
@@ -188,13 +184,13 @@ async fn run_src(
     database: &Path,
 ) -> Result<ReplayReport> {
     let src_rules = load_src_rules(game_rules).await?;
-    let db = database::connection::Database::new(database).await?;
-    let client = speedrun_api::SpeedrunClient::new()?;
-    let speedrun_ops = speedrun_api::SpeedrunOps::new(&client);
+    let db = daemon::database::connection::Database::new(database).await?;
+    let client = daemon::speedrun_api::SpeedrunClient::new()?;
+    let speedrun_ops = daemon::speedrun_api::SpeedrunOps::new(&client);
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
     let (fetched_run_id, game_id, category_id, submitted_date) =
-        run_processing::fetch_run_details(&client, run_id).await?;
+        daemon::run_processing::fetch_run_details(&client, run_id).await?;
 
     let game_category = speedrun_ops
         .format_game_category(&game_id, &category_id)
@@ -203,7 +199,7 @@ async fn run_src(
 
     let (run_rules, expected_mods) = src_rules.resolve_rules(&game_id, &category_id)?;
 
-    let new_run = database::types::NewRun::new(
+    let new_run = daemon::database::types::NewRun::new(
         fetched_run_id.clone(),
         game_id.clone(),
         category_id.clone(),
@@ -234,7 +230,7 @@ async fn run_src(
     .await;
 
     let report = result.as_ref().ok().cloned();
-    let retry_config = crate::retry::RetryConfig::default();
+    let retry_config = daemon::retry::RetryConfig::default();
     db.process_replay_result(&fetched_run_id, result, &retry_config)
         .await?;
 
@@ -251,9 +247,9 @@ async fn run_src_once(
         .await
         .context("Failed to load daemon config")?;
     let src_rules = load_src_rules(game_rules).await?;
-    let db = database::connection::Database::new(database).await?;
-    let client = speedrun_api::SpeedrunClient::new()?;
-    let speedrun_ops = speedrun_api::SpeedrunOps::new(&client);
+    let db = daemon::database::connection::Database::new(database).await?;
+    let client = daemon::speedrun_api::SpeedrunClient::new()?;
+    let speedrun_ops = daemon::speedrun_api::SpeedrunOps::new(&client);
 
     std::fs::create_dir_all(install_dir)?;
     std::fs::create_dir_all(output_dir)?;
@@ -317,7 +313,7 @@ async fn load_src_rules(path: &Path) -> Result<SrcRunRules> {
     serde_yaml::from_reader(File::open(path)?).with_context(|| "failed to load src rules")
 }
 
-async fn load_daemon_config(path: &Path) -> Result<DaemonConfig> {
+async fn load_daemon_config(path: &Path) -> Result<daemon::DaemonConfig> {
     serde_yaml::from_reader(File::open(path)?).with_context(|| "failed to load daemon config")
 }
 

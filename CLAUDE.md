@@ -43,22 +43,27 @@ Downloads and validates zip files from various sources:
 Main entry point that orchestrates everything:
 - `main.rs`: CLI argument parsing with clap
 - `run_replay.rs`: core replay execution logic
-- `config.rs`: `RunRules`, `SrcRunRules`, `GameConfig`, `CategoryConfig`, `DaemonConfig` - defines validation rules and configuration
+- `config.rs`: `RunRules` and `SrcRunRules` - defines validation rules for local and speedrun.com replays
 - `error.rs`: error classification system with `ClassifiedError` and `ErrorClass`
-- `speedrun_api.rs`: speedrun.com API client with typed `ApiError`, speedrun.com integration
-- `run_processing.rs`: downloads and runs replays from speedrun.com, returns `ClassifiedError`
-- `daemon.rs`: daemon orchestration with graceful shutdown handling
-  - `daemon/poller.rs`: polls speedrun.com periodically for new runs
-  - `daemon/processor.rs`: processes pending runs from database queue
-- `database/`: SQLite database infrastructure for run tracking
-  - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
-  - `connection.rs`: `Database` wrapper around sqlx pool with migrations
-  - `operations.rs`: database CRUD operations for runs and poll state
+- `query/`: query command implementation for database inspection
+- `daemon/`: daemon subsystem for speedrun.com integration
+  - `mod.rs`: daemon orchestration with graceful shutdown handling
+  - `config.rs`: `GameConfig`, `CategoryConfig`, `DaemonConfig` - daemon configuration
+  - `speedrun_api.rs`: speedrun.com API client with typed `ApiError`
+  - `run_processing.rs`: downloads and runs replays from speedrun.com, returns `ClassifiedError`
+  - `retry.rs`: retry logic with exponential backoff
+  - `poller.rs`: polls speedrun.com periodically for new runs
+  - `processor.rs`: processes pending runs from database queue
+  - `database/`: SQLite database infrastructure for run tracking
+    - `types.rs`: `RunStatus`, `VerificationStatus`, `Run`, `PollState` types
+    - `connection.rs`: `Database` wrapper around sqlx pool with migrations
+    - `operations.rs`: database CRUD operations for runs and poll state
 - `migrations/`: SQL migration files for schema versioning (at crate level, not in src/)
 - Main commands:
   - `run`: Run replay on local save file with rules
   - `run-src`: Run replay fetched from speedrun.com
   - `daemon`: Background service that polls and processes speedrun.com runs
+  - `query`: Inspect database state and errors
 
 ## Working with TypeScript/Lua Scripts
 
@@ -95,7 +100,7 @@ The codebase uses a type-based error classification system:
 1. **Per-crate typed errors**: Each crate defines semantic error enums
    - `zip_downloader::DownloadError`: Download and validation failures
    - `factorio_manager::FactorioError`: Factorio operations and save file errors
-   - `cli::speedrun_api::ApiError`: Speedrun.com API errors
+   - `cli::daemon::speedrun_api::ApiError`: Speedrun.com API errors
 
 2. **CLI boundary classification**: The `cli` crate classifies errors at the boundary
    - `ClassifiedError`: Wraps errors with classification
