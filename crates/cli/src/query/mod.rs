@@ -226,8 +226,13 @@ fn format_status(status: &RunStatus) -> String {
 }
 
 fn parse_datetime(date_str: &str) -> Result<chrono::DateTime<chrono::Utc>> {
-    date_str.parse().context(
-        "Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2024-01-01)",
+    if let Ok(dt) = date_str.parse() {
+        return Ok(dt);
+    }
+
+    let with_time = format!("{}T00:00:00Z", date_str);
+    with_time.parse().context(
+        "Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2025-01-01)",
     )
 }
 
@@ -790,5 +795,37 @@ mod tests {
         assert!(group_by_error_message(&runs, 10).is_ok());
         assert!(group_by_error_class(&runs, 10).is_ok());
         assert!(group_by_category(&runs, 10).is_ok());
+    }
+
+    #[test]
+    fn test_parse_datetime_full_format() {
+        let result = parse_datetime("2025-01-01T00:00:00Z");
+        assert!(result.is_ok());
+        let dt = result.unwrap();
+        assert_eq!(dt.to_rfc3339(), "2025-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn test_parse_datetime_date_only() {
+        let result = parse_datetime("2025-01-01");
+        assert!(result.is_ok());
+        let dt = result.unwrap();
+        assert_eq!(dt.to_rfc3339(), "2025-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn test_parse_datetime_with_timezone() {
+        let result = parse_datetime("2025-01-01T12:30:45+05:00");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_datetime_invalid_format() {
+        let result = parse_datetime("not-a-date");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid date format"));
     }
 }
