@@ -268,6 +268,7 @@ impl Database {
         }
 
         let now = Utc::now();
+        let processing_status = RunStatus::Processing;
         let discovered_status = RunStatus::Discovered;
         let error_status = RunStatus::Error;
         let conditions = allowed_game_categories
@@ -285,14 +286,21 @@ impl Database {
             WHERE (
                 (status = ? AND ({}))
                 OR (status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ? AND ({}))
+                OR (status = ? AND ({}))
             )
-            ORDER BY submitted_date ASC
+            ORDER BY
+                CASE
+                    WHEN status = ? THEN 0
+                    WHEN status = ? THEN 1
+                    WHEN status = ? THEN 2
+                END,
+                submitted_date ASC
             LIMIT 1
             "#,
-            conditions, conditions
+            conditions, conditions, conditions
         );
 
-        let mut query = sqlx::query(&query_str).bind(discovered_status);
+        let mut query = sqlx::query(&query_str).bind(processing_status);
 
         for (game_id, cat_id) in allowed_game_categories {
             query = query.bind(game_id).bind(cat_id);
@@ -303,6 +311,17 @@ impl Database {
         for (game_id, cat_id) in allowed_game_categories {
             query = query.bind(game_id).bind(cat_id);
         }
+
+        query = query.bind(discovered_status);
+
+        for (game_id, cat_id) in allowed_game_categories {
+            query = query.bind(game_id).bind(cat_id);
+        }
+
+        query = query
+            .bind(processing_status)
+            .bind(error_status)
+            .bind(discovered_status);
 
         let row = query.fetch_optional(self.pool()).await?;
 
@@ -829,6 +848,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_next_run_to_process_prioritizes_processing_runs() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run_discovered_old",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.insert_run(NewRun::new(
+            "run_processing_new",
+            "game1",
+            "cat1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.mark_run_processing("run_processing_new").await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run_error_ready",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.mark_run_error("run_error_ready", "test error")
+            .await
+            .unwrap();
+        let past_time = Utc::now() - chrono::Duration::hours(1);
+        db.schedule_retry("run_error_ready", 1, "retryable", past_time)
+            .await
+            .unwrap();
+
+        let allowed = vec![("game1".to_string(), "cat1".to_string())];
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+
+        assert_eq!(next_run.run_id, "run_processing_new");
+        assert_eq!(next_run.status, RunStatus::Processing);
+
+        db.mark_run_passed("run_processing_new").await.unwrap();
+
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_error_ready");
+        assert_eq!(next_run.status, RunStatus::Error);
+
+        db.mark_run_passed("run_error_ready").await.unwrap();
+
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_discovered_old");
+        assert_eq!(next_run.status, RunStatus::Discovered);
+    }
+
+    #[tokio::test]
     async fn test_process_replay_result_with_retry() {
         use crate::daemon::retry::RetryConfig;
         use crate::error::{ClassifiedError, ErrorClass};
@@ -1276,9 +1353,13 @@ mod tests {
 
         db.mark_run_processing("run_cat1").await.unwrap();
         let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
+        assert_eq!(next_run.run_id, "run_cat1");
+
+        db.mark_run_passed("run_cat1").await.unwrap();
+        let next_run = db.get_next_run_to_process(&allowed).await.unwrap().unwrap();
         assert_eq!(next_run.run_id, "run_game2_cat1");
 
-        db.mark_run_processing("run_game2_cat1").await.unwrap();
+        db.mark_run_passed("run_game2_cat1").await.unwrap();
         let next_run = db.get_next_run_to_process(&allowed).await.unwrap();
         assert!(next_run.is_none());
 
