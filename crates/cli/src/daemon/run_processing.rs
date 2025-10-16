@@ -48,12 +48,6 @@ pub struct RunProcessor<'a> {
 
 impl<'a> RunProcessor<'a> {
     pub fn new(client: &'a SpeedrunClient) -> Result<Self> {
-        if std::env::var("AUTO_DOWNLOAD_RUNS").is_err() {
-            anyhow::bail!(
-                "Not downloading runs for security reasons. set AUTO_DOWNLOAD_RUNS=1 to acknowledge risks and enable automatic download"
-            );
-        }
-
         let downloader = FileDownloader::builder()
             .add_service(GoogleDriveService::new())
             .add_service(DropboxService::new())
