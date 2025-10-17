@@ -1,8 +1,6 @@
 // default: false
 addReplayLib({
-  on_tick() {
-    if (game.finished) {
-      exitReplay("Scenario finished")
-    }
+  on_pre_scenario_finished() {
+    exitReplay("Scenario finished!")
   },
 })
