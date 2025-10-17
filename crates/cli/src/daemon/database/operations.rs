@@ -510,6 +510,68 @@ impl Database {
         }
         Ok(())
     }
+
+    pub async fn get_cached_game_name(&self, game_id: &str) -> Result<Option<String>> {
+        let result = sqlx::query!(
+            r#"SELECT game_name FROM game_cache WHERE game_id = ?"#,
+            game_id
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(result.map(|r| r.game_name))
+    }
+
+    pub async fn cache_game_name(&self, game_id: &str, game_name: &str) -> Result<()> {
+        let now = Utc::now();
+        sqlx::query!(
+            r#"
+            INSERT INTO game_cache (game_id, game_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(game_id) DO UPDATE SET
+                game_name = excluded.game_name,
+                updated_at = excluded.updated_at
+            "#,
+            game_id,
+            game_name,
+            now
+        )
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_cached_category_name(&self, category_id: &str) -> Result<Option<String>> {
+        let result = sqlx::query!(
+            r#"SELECT category_name FROM category_cache WHERE category_id = ?"#,
+            category_id
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(result.map(|r| r.category_name))
+    }
+
+    pub async fn cache_category_name(&self, category_id: &str, category_name: &str) -> Result<()> {
+        let now = Utc::now();
+        sqlx::query!(
+            r#"
+            INSERT INTO category_cache (category_id, category_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(category_id) DO UPDATE SET
+                category_name = excluded.category_name,
+                updated_at = excluded.updated_at
+            "#,
+            category_id,
+            category_name,
+            now
+        )
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

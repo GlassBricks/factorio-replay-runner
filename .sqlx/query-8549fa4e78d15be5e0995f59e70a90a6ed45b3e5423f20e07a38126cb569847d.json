@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT game_name FROM game_cache WHERE game_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "game_name",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8549fa4e78d15be5e0995f59e70a90a6ed45b3e5423f20e07a38126cb569847d"
+}

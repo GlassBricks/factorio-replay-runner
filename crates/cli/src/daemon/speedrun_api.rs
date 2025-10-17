@@ -8,6 +8,8 @@ use tokio::sync::RwLock;
 
 use thiserror::Error;
 
+use super::database::connection::Database;
+
 const API_BASE: &str = "https://www.speedrun.com/api/v1";
 
 #[derive(Debug, Error)]
@@ -301,6 +303,7 @@ pub struct SpeedrunOps {
     games: Arc<RwLock<HashMap<String, String>>>,
     categories: Arc<RwLock<HashMap<String, String>>>,
     pub client: SpeedrunClient,
+    db: Option<Database>,
 }
 
 impl SpeedrunOps {
@@ -309,7 +312,13 @@ impl SpeedrunOps {
             games: Arc::new(RwLock::new(HashMap::new())),
             categories: Arc::new(RwLock::new(HashMap::new())),
             client: client.clone(),
+            db: None,
         }
+    }
+
+    pub fn with_db(mut self, db: Database) -> Self {
+        self.db = Some(db);
+        self
     }
 
     pub async fn get_game_name(&self, game_id: &str) -> Result<String, ApiError> {
@@ -320,13 +329,22 @@ impl SpeedrunOps {
             }
         }
 
+        if let Some(db) = &self.db
+            && let Ok(Some(name)) = db.get_cached_game_name(game_id).await
+        {
+            let mut games = self.games.write().await;
+            games.insert(game_id.to_string(), name.clone());
+            return Ok(name);
+        }
+
         let game = self.client.get_game(game_id).await?;
         let name = game.names.international;
 
-        self.games
-            .write()
-            .await
-            .insert(game_id.to_string(), name.clone());
+        if let Some(db) = &self.db {
+            let _ = db.cache_game_name(game_id, &name).await;
+        }
+        let mut games = self.games.write().await;
+        games.insert(game_id.to_string(), name.clone());
 
         Ok(name)
     }
@@ -338,13 +356,23 @@ impl SpeedrunOps {
                 return Ok(name.clone());
             }
         }
+
+        if let Some(db) = &self.db
+            && let Ok(Some(name)) = db.get_cached_category_name(category_id).await
+        {
+            let mut categories = self.categories.write().await;
+            categories.insert(category_id.to_string(), name.clone());
+            return Ok(name);
+        }
+
         let category = self.client.get_category(category_id).await?;
         let name = category.name;
 
-        self.categories
-            .write()
-            .await
-            .insert(category_id.to_string(), name.clone());
+        if let Some(db) = &self.db {
+            let _ = db.cache_category_name(category_id, &name).await;
+        }
+        let mut categories = self.categories.write().await;
+        categories.insert(category_id.to_string(), name.clone());
 
         Ok(name)
     }

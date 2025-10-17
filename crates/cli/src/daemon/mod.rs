@@ -26,7 +26,7 @@ pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<
         .context("Failed to initialize database")?;
 
     let client = SpeedrunClient::new()?;
-    let speedrun_ops = SpeedrunOps::new(&client);
+    let speedrun_ops = SpeedrunOps::new(&client).with_db(db.clone());
 
     std::fs::create_dir_all(&config.install_dir)?;
     std::fs::create_dir_all(&config.output_dir)?;

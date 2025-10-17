@@ -110,7 +110,7 @@ pub struct CleanupArgs {
 pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
     let db = Database::new(&args.database).await?;
     let speedrun_client = SpeedrunClient::new().context("Failed to create speedrun client")?;
-    let speedrun_ops = SpeedrunOps::new(&speedrun_client);
+    let speedrun_ops = SpeedrunOps::new(&speedrun_client).with_db(db.clone());
 
     match args.subcommand {
         QuerySubcommand::List(list_args) => handle_list(&db, &speedrun_ops, list_args).await,
