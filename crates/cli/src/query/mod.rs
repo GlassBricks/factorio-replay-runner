@@ -1,12 +1,53 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
+use comfy_table::{Cell, Table};
 use std::path::PathBuf;
 
 use crate::daemon::database::connection::Database;
 use crate::daemon::database::types::{Run, RunFilter, RunStatus};
 use crate::daemon::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
-mod formatter;
+struct RunDisplay<'a> {
+    run: &'a Run,
+    game_name: String,
+    category_name: String,
+}
+
+fn format_runs_as_table(runs: &[RunDisplay]) -> String {
+    let mut table = Table::new();
+    table.set_header(vec![
+        "Run ID",
+        "Game/Category",
+        "Submitted",
+        "Status",
+        "Retries",
+        "Error Class",
+    ]);
+
+    for run_display in runs {
+        let run = run_display.run;
+        let game_category = format!("{} / {}", run_display.game_name, run_display.category_name);
+        let submitted = run.submitted_date.format("%Y-%m-%d %H:%M").to_string();
+        let status = format_status(&run.status);
+        let retries = if run.retry_count > 0 {
+            run.retry_count.to_string()
+        } else {
+            "-".to_string()
+        };
+        let error_class = run.error_class.as_deref().unwrap_or("-");
+
+        table.add_row(vec![
+            Cell::new(&run.run_id[..8.min(run.run_id.len())]),
+            Cell::new(game_category),
+            Cell::new(submitted),
+            Cell::new(status),
+            Cell::new(retries),
+            Cell::new(error_class),
+        ]);
+    }
+
+    table.to_string()
+}
 
 #[derive(Args)]
 pub struct QueryArgs {
@@ -44,17 +85,11 @@ pub struct ListArgs {
 
     #[arg(long, default_value = "0")]
     pub offset: u32,
-
-    #[arg(long, default_value = "table")]
-    pub format: String,
 }
 
 #[derive(Args)]
 pub struct ShowArgs {
     pub run_id: String,
-
-    #[arg(long, default_value = "text")]
-    pub format: String,
 }
 
 #[derive(Args)]
@@ -151,8 +186,6 @@ async fn handle_list(db: &Database, ops: &SpeedrunOps, args: ListArgs) -> Result
         .transpose()
         .context("Invalid status value")?;
 
-    let format = formatter::OutputFormat::from_str(&args.format)?;
-
     let filter = RunFilter {
         status,
         game_id: args.game_id,
@@ -165,41 +198,22 @@ async fn handle_list(db: &Database, ops: &SpeedrunOps, args: ListArgs) -> Result
     let runs = db.query_runs(filter).await?;
 
     if runs.is_empty() {
-        match format {
-            formatter::OutputFormat::Json => println!("[]"),
-            formatter::OutputFormat::Csv => {
-                println!(
-                    "run_id,game_id,game_name,category_id,category_name,submitted_date,status,retry_count,error_class,error_message,next_retry_at,created_at,updated_at"
-                )
-            }
-            formatter::OutputFormat::Table => {
-                println!("No runs found matching the criteria")
-            }
-        }
+        println!("No runs found matching the criteria");
         return Ok(());
     }
 
-    let output = match format {
-        formatter::OutputFormat::Table | formatter::OutputFormat::Csv => {
-            let mut run_displays = Vec::new();
-            for run in &runs {
-                let (game_name, category_name) =
-                    resolve_game_category(ops, &run.game_id, &run.category_id).await;
-                run_displays.push(formatter::RunDisplay {
-                    run,
-                    game_name,
-                    category_name,
-                });
-            }
-            match format {
-                formatter::OutputFormat::Table => formatter::format_runs_as_table(&run_displays),
-                formatter::OutputFormat::Csv => formatter::format_runs_as_csv(&run_displays)?,
-                _ => unreachable!(),
-            }
-        }
-        formatter::OutputFormat::Json => formatter::format_runs_as_json(&runs)?,
-    };
+    let mut run_displays = Vec::new();
+    for run in &runs {
+        let (game_name, category_name) =
+            resolve_game_category(ops, &run.game_id, &run.category_id).await;
+        run_displays.push(RunDisplay {
+            run,
+            game_name,
+            category_name,
+        });
+    }
 
+    let output = format_runs_as_table(&run_displays);
     println!("{}", output);
     Ok(())
 }
@@ -277,11 +291,6 @@ async fn handle_show(db: &Database, ops: &SpeedrunOps, args: ShowArgs) -> Result
         .get_run(&args.run_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Run not found: {}", args.run_id))?;
-
-    if args.format == "json" {
-        println!("{}", formatter::format_run_as_json(&run)?);
-        return Ok(());
-    }
 
     let (game_name, category_name) =
         resolve_game_category(ops, &run.game_id, &run.category_id).await;
