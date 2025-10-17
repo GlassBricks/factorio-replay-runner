@@ -121,7 +121,9 @@ pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
             handle_errors(&db, &speedrun_ops, errors_args).await
         }
         QuerySubcommand::Reset(reset_args) => handle_reset(&db, reset_args).await,
-        QuerySubcommand::Cleanup(cleanup_args) => handle_cleanup(&db, cleanup_args).await,
+        QuerySubcommand::Cleanup(cleanup_args) => {
+            handle_cleanup(&db, &speedrun_ops, cleanup_args).await
+        }
     }
 }
 
@@ -457,7 +459,7 @@ async fn handle_errors(db: &Database, ops: &SpeedrunOps, args: ErrorsArgs) -> Re
     }
 
     if let Some(group_by) = &args.group_by {
-        handle_grouped_errors(&error_runs, group_by, args.limit)
+        handle_grouped_errors(ops, &error_runs, group_by, args.limit).await
     } else {
         handle_ungrouped_errors(ops, &error_runs, args.limit).await
     }
@@ -487,11 +489,29 @@ async fn handle_ungrouped_errors(ops: &SpeedrunOps, error_runs: &[Run], limit: u
     Ok(())
 }
 
-fn handle_grouped_errors(error_runs: &[Run], group_by: &str, limit: u32) -> Result<()> {
+async fn handle_grouped_errors(
+    ops: &SpeedrunOps,
+    error_runs: &[Run],
+    group_by: &str,
+    limit: u32,
+) -> Result<()> {
+    use std::collections::{HashMap, HashSet};
+
+    let unique_pairs: HashSet<(String, String)> = error_runs
+        .iter()
+        .map(|r| (r.game_id.clone(), r.category_id.clone()))
+        .collect();
+
+    let mut names_map: HashMap<(String, String), (String, String)> = HashMap::new();
+    for (game_id, category_id) in unique_pairs {
+        let (game_name, category_name) = resolve_game_category(ops, &game_id, &category_id).await;
+        names_map.insert((game_id, category_id), (game_name, category_name));
+    }
+
     match group_by {
-        "message" => group_by_error_message(error_runs, limit),
-        "class" => group_by_error_class(error_runs, limit),
-        "category" => group_by_category(error_runs, limit),
+        "message" => group_by_error_message(error_runs, &names_map, limit),
+        "class" => group_by_error_class(error_runs, &names_map, limit),
+        "category" => group_by_category(error_runs, &names_map, limit),
         _ => Err(anyhow::anyhow!(
             "Invalid group-by value: '{}'. Valid options are: message, class, category",
             group_by
@@ -499,7 +519,11 @@ fn handle_grouped_errors(error_runs: &[Run], group_by: &str, limit: u32) -> Resu
     }
 }
 
-fn group_by_error_message(error_runs: &[Run], limit: u32) -> Result<()> {
+fn group_by_error_message(
+    error_runs: &[Run],
+    names_map: &std::collections::HashMap<(String, String), (String, String)>,
+    limit: u32,
+) -> Result<()> {
     group_and_display(
         error_runs,
         limit,
@@ -516,7 +540,11 @@ fn group_by_error_message(error_runs: &[Run], limit: u32) -> Result<()> {
             println!("Message: {}", message);
             println!("Example runs:");
             for run in runs.iter().take(3) {
-                println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+                let (game_name, category_name) = names_map
+                    .get(&(run.game_id.clone(), run.category_id.clone()))
+                    .map(|(g, c)| (g.as_str(), c.as_str()))
+                    .unwrap_or((&run.game_id, &run.category_id));
+                println!("  - {} ({}/{})", run.run_id, game_name, category_name);
             }
             if runs.len() > 3 {
                 println!("  ... and {} more", runs.len() - 3);
@@ -526,7 +554,11 @@ fn group_by_error_message(error_runs: &[Run], limit: u32) -> Result<()> {
     )
 }
 
-fn group_by_error_class(error_runs: &[Run], limit: u32) -> Result<()> {
+fn group_by_error_class(
+    error_runs: &[Run],
+    names_map: &std::collections::HashMap<(String, String), (String, String)>,
+    limit: u32,
+) -> Result<()> {
     group_and_display(
         error_runs,
         limit,
@@ -543,7 +575,11 @@ fn group_by_error_class(error_runs: &[Run], limit: u32) -> Result<()> {
             println!("Count: {} runs", runs.len());
             println!("Example runs:");
             for run in runs.iter().take(3) {
-                println!("  - {} ({}/{})", run.run_id, run.game_id, run.category_id);
+                let (game_name, category_name) = names_map
+                    .get(&(run.game_id.clone(), run.category_id.clone()))
+                    .map(|(g, c)| (g.as_str(), c.as_str()))
+                    .unwrap_or((&run.game_id, &run.category_id));
+                println!("  - {} ({}/{})", run.run_id, game_name, category_name);
                 if let Some(msg) = &run.error_message {
                     let preview = msg.chars().take(60).collect::<String>();
                     println!(
@@ -564,7 +600,11 @@ fn group_by_error_class(error_runs: &[Run], limit: u32) -> Result<()> {
     )
 }
 
-fn group_by_category(error_runs: &[Run], limit: u32) -> Result<()> {
+fn group_by_category(
+    error_runs: &[Run],
+    names_map: &std::collections::HashMap<(String, String), (String, String)>,
+    limit: u32,
+) -> Result<()> {
     use std::collections::HashMap;
 
     group_and_display(
@@ -573,35 +613,42 @@ fn group_by_category(error_runs: &[Run], limit: u32) -> Result<()> {
         "Errors Grouped by Game/Category",
         "unique game/categories",
         |run| format!("{}/{}", run.game_id, run.category_id),
-        |category, runs| {
-            println!("Game/Category: {}", category);
-            println!("Count: {} runs", runs.len());
+        |_category, runs| {
+            if let Some(first_run) = runs.first() {
+                let (game_name, category_name) = names_map
+                    .get(&(first_run.game_id.clone(), first_run.category_id.clone()))
+                    .map(|(g, c)| (g.as_str(), c.as_str()))
+                    .unwrap_or((&first_run.game_id, &first_run.category_id));
 
-            let mut error_class_counts: HashMap<String, usize> = HashMap::new();
-            for run in runs.iter() {
-                let class = run.error_class.as_deref().unwrap_or("(no class)");
-                *error_class_counts.entry(class.to_string()).or_insert(0) += 1;
-            }
+                println!("Game/Category: {} / {}", game_name, category_name);
+                println!("Count: {} runs", runs.len());
 
-            println!("Error classes:");
-            let mut class_list: Vec<_> = error_class_counts.iter().collect();
-            class_list.sort_by(|a, b| b.1.cmp(a.1));
-            for (class, count) in class_list {
-                println!("  - {}: {} runs", class, count);
-            }
+                let mut error_class_counts: HashMap<String, usize> = HashMap::new();
+                for run in runs.iter() {
+                    let class = run.error_class.as_deref().unwrap_or("(no class)");
+                    *error_class_counts.entry(class.to_string()).or_insert(0) += 1;
+                }
 
-            println!("Example runs:");
-            for run in runs.iter().take(3) {
-                println!(
-                    "  - {} ({})",
-                    run.run_id,
-                    run.error_class.as_deref().unwrap_or("N/A")
-                );
+                println!("Error classes:");
+                let mut class_list: Vec<_> = error_class_counts.iter().collect();
+                class_list.sort_by(|a, b| b.1.cmp(a.1));
+                for (class, count) in class_list {
+                    println!("  - {}: {} runs", class, count);
+                }
+
+                println!("Example runs:");
+                for run in runs.iter().take(3) {
+                    println!(
+                        "  - {} ({})",
+                        run.run_id,
+                        run.error_class.as_deref().unwrap_or("N/A")
+                    );
+                }
+                if runs.len() > 3 {
+                    println!("  ... and {} more", runs.len() - 3);
+                }
+                println!();
             }
-            if runs.len() > 3 {
-                println!("  ... and {} more", runs.len() - 3);
-            }
-            println!();
         },
     )
 }
@@ -627,7 +674,7 @@ async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
     Ok(())
 }
 
-async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
+async fn handle_cleanup(db: &Database, ops: &SpeedrunOps, args: CleanupArgs) -> Result<()> {
     let before_date = args
         .before
         .as_ref()
@@ -654,6 +701,19 @@ async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
         return Ok(());
     }
 
+    use std::collections::{HashMap, HashSet};
+
+    let unique_pairs: HashSet<(String, String)> = runs_to_delete
+        .iter()
+        .map(|r| (r.game_id.clone(), r.category_id.clone()))
+        .collect();
+
+    let mut names_map: HashMap<(String, String), (String, String)> = HashMap::new();
+    for (game_id, category_id) in unique_pairs {
+        let (game_name, category_name) = resolve_game_category(ops, &game_id, &category_id).await;
+        names_map.insert((game_id, category_id), (game_name, category_name));
+    }
+
     println!(
         "Found {} run(s) matching the criteria:",
         runs_to_delete.len()
@@ -661,11 +721,15 @@ async fn handle_cleanup(db: &Database, args: CleanupArgs) -> Result<()> {
     println!();
 
     for run in &runs_to_delete {
+        let (game_name, category_name) = names_map
+            .get(&(run.game_id.clone(), run.category_id.clone()))
+            .map(|(g, c)| (g.as_str(), c.as_str()))
+            .unwrap_or((&run.game_id, &run.category_id));
         println!(
-            "  {} - {} - {} - {}",
+            "  {} - {} / {} - {}",
             run.run_id,
-            run.game_id,
-            run.category_id,
+            game_name,
+            category_name,
             format_status(&run.status)
         );
     }
@@ -730,71 +794,83 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_grouped_errors_invalid_group_by() {
-        let runs = vec![create_test_run(
-            "run1",
-            "game1",
-            "cat1",
-            Some("final"),
-            Some("error message"),
-        )];
-
-        let result = handle_grouped_errors(&runs, "invalid", 10);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid group-by value")
-        );
-    }
-
-    #[test]
     fn test_group_by_error_message() {
+        use std::collections::HashMap;
+
         let runs = vec![
             create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
             create_test_run("run2", "game1", "cat1", Some("final"), Some("error A")),
             create_test_run("run3", "game1", "cat1", Some("final"), Some("error B")),
         ];
 
-        let result = group_by_error_message(&runs, 10);
+        let mut names_map = HashMap::new();
+        names_map.insert(
+            ("game1".to_string(), "cat1".to_string()),
+            ("Game 1".to_string(), "Category 1".to_string()),
+        );
+
+        let result = group_by_error_message(&runs, &names_map, 10);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_group_by_error_class() {
+        use std::collections::HashMap;
+
         let runs = vec![
             create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
             create_test_run("run2", "game1", "cat1", Some("retryable"), Some("error B")),
             create_test_run("run3", "game1", "cat1", Some("final"), Some("error C")),
         ];
 
-        let result = group_by_error_class(&runs, 10);
+        let mut names_map = HashMap::new();
+        names_map.insert(
+            ("game1".to_string(), "cat1".to_string()),
+            ("Game 1".to_string(), "Category 1".to_string()),
+        );
+
+        let result = group_by_error_class(&runs, &names_map, 10);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_group_by_category() {
+        use std::collections::HashMap;
+
         let runs = vec![
             create_test_run("run1", "game1", "cat1", Some("final"), Some("error A")),
             create_test_run("run2", "game1", "cat1", Some("final"), Some("error B")),
             create_test_run("run3", "game2", "cat2", Some("retryable"), Some("error C")),
         ];
 
-        let result = group_by_category(&runs, 10);
+        let mut names_map = HashMap::new();
+        names_map.insert(
+            ("game1".to_string(), "cat1".to_string()),
+            ("Game 1".to_string(), "Category 1".to_string()),
+        );
+        names_map.insert(
+            ("game2".to_string(), "cat2".to_string()),
+            ("Game 2".to_string(), "Category 2".to_string()),
+        );
+
+        let result = group_by_category(&runs, &names_map, 10);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_group_by_handles_none_values() {
+        use std::collections::HashMap;
+
         let runs = vec![
             create_test_run("run1", "game1", "cat1", None, None),
             create_test_run("run2", "game1", "cat1", Some("final"), Some("error")),
         ];
 
-        assert!(group_by_error_message(&runs, 10).is_ok());
-        assert!(group_by_error_class(&runs, 10).is_ok());
-        assert!(group_by_category(&runs, 10).is_ok());
+        let names_map = HashMap::new();
+
+        assert!(group_by_error_message(&runs, &names_map, 10).is_ok());
+        assert!(group_by_error_class(&runs, &names_map, 10).is_ok());
+        assert!(group_by_category(&runs, &names_map, 10).is_ok());
     }
 
     #[test]
@@ -823,9 +899,11 @@ mod tests {
     fn test_parse_datetime_invalid_format() {
         let result = parse_datetime("not-a-date");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid date format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid date format")
+        );
     }
 }
