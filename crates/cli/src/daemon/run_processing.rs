@@ -58,7 +58,7 @@ impl<'a> RunProcessor<'a> {
     }
 
     async fn fetch_run_description(&self, run_id: &str) -> Result<String, ApiError> {
-        info!("Fetching run data for {}", run_id);
+        info!("Fetching run data");
         let run = self.client.get_run(run_id).await?;
 
         let description = run.comment.as_ref().ok_or_else(|| {
