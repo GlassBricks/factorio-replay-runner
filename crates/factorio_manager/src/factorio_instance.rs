@@ -51,8 +51,16 @@ impl FactorioInstance {
     }
 
     fn new_run_command(&self) -> Command {
-        let path = self.install_dir_abs.join("bin/x64/factorio");
-        Command::new(path)
+        let factorio_path = self.install_dir_abs.join("bin/x64/factorio");
+
+        std::env::var("FACTORIO_WRAPPER")
+            .ok()
+            .map(|wrapper| {
+                let mut cmd = Command::new(wrapper);
+                cmd.arg(&factorio_path);
+                cmd
+            })
+            .unwrap_or_else(|| Command::new(factorio_path))
     }
 
     pub fn spawn(&self, args: &[&str]) -> Result<FactorioProcess, FactorioError> {
