@@ -147,7 +147,7 @@ async fn record_output(
     let mut stream = msg_stream(process);
 
     let mut max_level = MsgLevel::Info;
-    let timeout_duration = Duration::from_secs(300);
+    let timeout_duration = Duration::from_secs(60);
     let mut last_message_time = Instant::now();
     let mut exited_successfully = false;
 
