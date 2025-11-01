@@ -64,7 +64,7 @@ async fn poll_category(
         .await?
         .unwrap_or(cutoff_date);
 
-    let new_runs = poll_game_category(ctx.client(), game_id, category_id, &latest_submitted_date)
+    let new_runs = poll_game_category(&ctx.speedrun_ops, game_id, category_id, &latest_submitted_date)
         .await
         .context("Failed to poll game category from API")?;
 

@@ -35,12 +35,6 @@ pub struct RunProcessingContext {
     pub retry_config: RetryConfig,
 }
 
-impl RunProcessingContext {
-    pub fn client(&self) -> &SpeedrunClient {
-        &self.speedrun_ops.client
-    }
-}
-
 pub struct RunProcessor<'a> {
     downloader: FileDownloader,
     client: &'a SpeedrunClient,
@@ -117,14 +111,23 @@ pub async fn fetch_run_details(
 }
 
 pub async fn poll_game_category(
-    client: &SpeedrunClient,
+    speedrun_ops: &SpeedrunOps,
     game_id: &str,
     category_id: &str,
     cutoff_date: &DateTime<Utc>,
 ) -> Result<Vec<NewRun>, ApiError> {
     info!(
         "Polling for new runs: game={}, category={}",
-        game_id, category_id
+        speedrun_ops
+            .get_game_name(game_id)
+            .await
+            .as_ref()
+            .map_or(game_id, |name| &name.as_str()),
+        speedrun_ops
+            .get_category_name(category_id)
+            .await
+            .as_ref()
+            .map_or(category_id, |name| &name.as_str())
     );
 
     let query = RunsQuery::new()
@@ -133,7 +136,7 @@ pub async fn poll_game_category(
         .orderby("submitted")
         .direction("asc");
 
-    let runs = client.stream_runs(&query).await?;
+    let runs = speedrun_ops.client.stream_runs(&query).await?;
 
     let new_runs: Vec<NewRun> = runs
         .into_iter()
