@@ -125,6 +125,13 @@ impl FactorioProcess {
             libc::kill(pid as libc::pid_t, libc::SIGINT);
         }
     }
+
+    pub fn kill(&mut self) {
+        let pid = self.child.id();
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
 }
 
 impl Drop for FactorioProcess {

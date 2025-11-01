@@ -98,7 +98,15 @@ async fn run_and_log_replay(
     let mut process = instance.spawn_replay(installed_save_path)?;
     let (max_msg_level, exited_via_script) = record_output(&mut process, log_path).await?;
 
-    let exit_status = process.wait().await?;
+    process.terminate();
+    let exit_status = match tokio::time::timeout(Duration::from_secs(5), process.wait()).await {
+        Ok(result) => result?,
+        Err(_) => {
+            // Timeout occurred, force kill
+            process.kill();
+            process.wait().await?
+        }
+    };
     if !exit_status.success() && !exited_via_script {
         return Err(FactorioError::ProcessExitedUnsuccessfully {
             exit_code: exit_status.code(),
