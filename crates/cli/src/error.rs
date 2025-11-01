@@ -15,12 +15,12 @@ pub enum ErrorClass {
 
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
-pub struct ClassifiedError {
+pub struct RunProcessingError {
     pub class: ErrorClass,
     pub message: String,
 }
 
-impl ClassifiedError {
+impl RunProcessingError {
     pub fn from_error<E: fmt::Display>(class: ErrorClass, error: &E) -> Self {
         Self {
             class,
@@ -29,7 +29,7 @@ impl ClassifiedError {
     }
 }
 
-impl From<DownloadError> for ClassifiedError {
+impl From<DownloadError> for RunProcessingError {
     fn from(e: DownloadError) -> Self {
         let class = match &e {
             DownloadError::NoLinkFound => ErrorClass::Final,
@@ -41,11 +41,11 @@ impl From<DownloadError> for ClassifiedError {
             }
             DownloadError::IoError(_) => ErrorClass::Retryable,
         };
-        ClassifiedError::from_error(class, &e)
+        RunProcessingError::from_error(class, &e)
     }
 }
 
-impl From<FactorioError> for ClassifiedError {
+impl From<FactorioError> for RunProcessingError {
     fn from(e: FactorioError) -> Self {
         let class = match &e {
             FactorioError::InvalidSaveFile(_) => ErrorClass::Final,
@@ -63,11 +63,11 @@ impl From<FactorioError> for ClassifiedError {
             FactorioError::ReplayTimeout => ErrorClass::Final,
             FactorioError::IoError(_) => ErrorClass::Retryable,
         };
-        ClassifiedError::from_error(class, &e)
+        RunProcessingError::from_error(class, &e)
     }
 }
 
-impl From<ApiError> for ClassifiedError {
+impl From<ApiError> for RunProcessingError {
     fn from(e: ApiError) -> Self {
         let class = match &e {
             ApiError::NetworkError(_) => ErrorClass::Retryable,
@@ -75,6 +75,6 @@ impl From<ApiError> for ClassifiedError {
             ApiError::ParseError(_) => ErrorClass::Retryable,
             ApiError::MissingField(_) => ErrorClass::Final,
         };
-        ClassifiedError::from_error(class, &e)
+        RunProcessingError::from_error(class, &e)
     }
 }

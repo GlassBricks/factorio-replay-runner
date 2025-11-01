@@ -7,7 +7,7 @@ use replay_script::MsgLevel;
 use sqlx::Row;
 
 use crate::daemon::retry::{RetryConfig, calculate_next_retry, error_class_to_string};
-use crate::error::ClassifiedError;
+use crate::error::RunProcessingError;
 use crate::run_replay::ReplayReport;
 
 impl Database {
@@ -437,7 +437,7 @@ impl Database {
     pub async fn process_replay_result(
         &self,
         run_id: &str,
-        result: Result<ReplayReport, ClassifiedError>,
+        result: Result<ReplayReport, RunProcessingError>,
         retry_config: &RetryConfig,
     ) -> Result<()> {
         match result {
@@ -970,7 +970,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_replay_result_with_retry() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::error::{RunProcessingError, ErrorClass};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -978,7 +978,7 @@ mod tests {
         let new_run = NewRun::new("run_retry_result", "game1", "cat1", submitted_date);
         db.insert_run(new_run).await.unwrap();
 
-        let error = ClassifiedError {
+        let error = RunProcessingError {
             class: ErrorClass::Retryable,
             message: "Network error".to_string(),
         };
@@ -998,7 +998,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_replay_result_final_error() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::error::{RunProcessingError, ErrorClass};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -1006,7 +1006,7 @@ mod tests {
         let new_run = NewRun::new("run_final", "game1", "cat1", submitted_date);
         db.insert_run(new_run).await.unwrap();
 
-        let error = ClassifiedError {
+        let error = RunProcessingError {
             class: ErrorClass::Final,
             message: "Invalid save file".to_string(),
         };
@@ -1062,7 +1062,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_workflow_end_to_end() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::error::{RunProcessingError, ErrorClass};
         use replay_script::MsgLevel;
 
         let db = Database::in_memory().await.unwrap();
@@ -1071,7 +1071,7 @@ mod tests {
         let new_run = NewRun::new("run_e2e", "game1", "cat1", submitted_date);
         db.insert_run(new_run).await.unwrap();
 
-        let error = ClassifiedError {
+        let error = RunProcessingError {
             class: ErrorClass::Retryable,
             message: "Temporary failure".to_string(),
         };
@@ -1117,7 +1117,7 @@ mod tests {
     #[tokio::test]
     async fn test_permanent_failure_after_max_attempts() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::error::{RunProcessingError, ErrorClass};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -1132,7 +1132,7 @@ mod tests {
             let run = db.get_run("run_max_attempts").await.unwrap().unwrap();
             assert_eq!(run.retry_count, attempt);
 
-            let error = ClassifiedError {
+            let error = RunProcessingError {
                 class: ErrorClass::Retryable,
                 message: format!("Failure attempt {}", attempt + 1),
             };
@@ -1165,7 +1165,7 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limited_retry_scheduling() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{ClassifiedError, ErrorClass};
+        use crate::error::{RunProcessingError, ErrorClass};
         use std::time::Duration;
 
         let db = Database::in_memory().await.unwrap();
@@ -1175,7 +1175,7 @@ mod tests {
         db.insert_run(new_run).await.unwrap();
 
         let retry_after = Duration::from_secs(300);
-        let error = ClassifiedError {
+        let error = RunProcessingError {
             class: ErrorClass::RateLimited {
                 retry_after: Some(retry_after),
             },

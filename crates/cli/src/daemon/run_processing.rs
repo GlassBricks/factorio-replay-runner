@@ -19,7 +19,7 @@ use crate::daemon::database::connection::Database;
 use crate::daemon::database::types::NewRun;
 use crate::daemon::retry::RetryConfig;
 use crate::daemon::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
-use crate::error::ClassifiedError;
+use crate::error::RunProcessingError;
 use crate::error::ErrorClass;
 use crate::run_replay::{ReplayReport, run_replay};
 
@@ -66,7 +66,7 @@ impl<'a> RunProcessor<'a> {
         &mut self,
         description: &str,
         working_dir: &Path,
-    ) -> Result<WrittenSaveFile, ClassifiedError> {
+    ) -> Result<WrittenSaveFile, RunProcessingError> {
         info!("Downloading save file");
         let save_file_info = self
             .downloader
@@ -75,9 +75,9 @@ impl<'a> RunProcessor<'a> {
 
         let save_path = working_dir.join(save_file_info.name);
         let file = File::open(&save_path).map_err(|e| {
-            ClassifiedError::from(factorio_manager::error::FactorioError::IoError(e))
+            RunProcessingError::from(factorio_manager::error::FactorioError::IoError(e))
         })?;
-        let save_file = SaveFile::new(file).map_err(ClassifiedError::from)?;
+        let save_file = SaveFile::new(file).map_err(RunProcessingError::from)?;
 
         Ok(WrittenSaveFile(save_path, save_file))
     }
@@ -86,7 +86,7 @@ impl<'a> RunProcessor<'a> {
         &mut self,
         run_id: &str,
         working_dir: &Path,
-    ) -> Result<WrittenSaveFile, ClassifiedError> {
+    ) -> Result<WrittenSaveFile, RunProcessingError> {
         let description = self.fetch_run_description(run_id).await?;
         self.download_save(&description, working_dir).await
     }
@@ -159,16 +159,16 @@ pub async fn download_and_run_replay(
     expected_mods: &ExpectedMods,
     install_dir: &Path,
     output_dir: &Path,
-) -> Result<ReplayReport, ClassifiedError> {
+) -> Result<ReplayReport, RunProcessingError> {
     info!("=== Processing Run ===");
     info!("Run ID: {}", run_id);
 
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)
-        .map_err(|e| ClassifiedError::from_error(ErrorClass::Retryable, &e))?;
+        .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
 
     let mut processor = RunProcessor::new(client)
-        .map_err(|e| ClassifiedError::from_error(ErrorClass::Retryable, &e))?;
+        .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
 
     let version = save_file.1.get_factorio_version()?;
