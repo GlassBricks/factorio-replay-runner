@@ -4,8 +4,12 @@ use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::Notify;
 
+use crate::daemon::SpeedrunOps;
+use crate::daemon::database::types::NewRun;
+use crate::daemon::speedrun_api::{ApiError, RunsQuery};
+
 use super::config::PollingConfig;
-use super::run_processing::{RunProcessingContext, poll_game_category};
+use super::run_processing::RunProcessingContext;
 
 pub async fn poll_speedrun_com_loop(
     ctx: RunProcessingContext,
@@ -51,6 +55,47 @@ pub async fn poll_speedrun_com(
     Ok(())
 }
 
+async fn poll_game_category(
+    speedrun_ops: &SpeedrunOps,
+    game_id: &str,
+    category_id: &str,
+    cutoff_date: &DateTime<Utc>,
+) -> Result<Vec<NewRun>, ApiError> {
+    info!(
+        "Polling for new runs: game={}, category={}",
+        speedrun_ops
+            .get_game_name(game_id)
+            .await
+            .as_ref()
+            .map_or(game_id, |name| name.as_str()),
+        speedrun_ops
+            .get_category_name(category_id)
+            .await
+            .as_ref()
+            .map_or(category_id, |name| name.as_str())
+    );
+
+    let query = RunsQuery::new()
+        .game(game_id)
+        .category(category_id)
+        .orderby("submitted")
+        .direction("asc");
+
+    let runs = speedrun_ops.client.stream_runs(&query).await?;
+
+    let new_runs: Vec<NewRun> = runs
+        .into_iter()
+        .filter_map(|run| {
+            let submitted_date = run.get_submitted_date().ok()?;
+            (submitted_date > *cutoff_date)
+                .then(|| NewRun::new(run.id, game_id, category_id, submitted_date))
+        })
+        .collect();
+
+    info!("Found {} new runs", new_runs.len());
+    Ok(new_runs)
+}
+
 async fn poll_category(
     ctx: &RunProcessingContext,
     game_id: &str,
@@ -64,9 +109,14 @@ async fn poll_category(
         .await?
         .unwrap_or(cutoff_date);
 
-    let new_runs = poll_game_category(&ctx.speedrun_ops, game_id, category_id, &latest_submitted_date)
-        .await
-        .context("Failed to poll game category from API")?;
+    let new_runs = poll_game_category(
+        &ctx.speedrun_ops,
+        game_id,
+        category_id,
+        &latest_submitted_date,
+    )
+    .await
+    .context("Failed to poll game category from API")?;
 
     let discovered_count = new_runs.len();
 

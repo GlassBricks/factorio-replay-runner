@@ -189,22 +189,19 @@ async fn run_src(
     let speedrun_ops = daemon::speedrun_api::SpeedrunOps::new(&client);
 
     info!("Fetching run data (https://speedrun.com/runs/{})", run_id);
-    let (fetched_run_id, game_id, category_id, submitted_date) =
-        daemon::run_processing::fetch_run_details(&client, run_id).await?;
+    let run = client.get_run(run_id).await?;
+    let submitted_date = run.get_submitted_date()?;
 
     let game_category = speedrun_ops
-        .format_game_category(&game_id, &category_id)
+        .format_game_category(&run.game, &run.category)
         .await;
     info!("Game: {}", game_category);
 
-    let (run_rules, expected_mods) = src_rules.resolve_rules(&game_id, &category_id)?;
+    let (run_rules, expected_mods) = src_rules.resolve_rules(&run.game, &run.category)?;
+    let run_id = run.id;
 
-    let new_run = daemon::database::types::NewRun::new(
-        fetched_run_id.clone(),
-        game_id.clone(),
-        category_id.clone(),
-        submitted_date,
-    );
+    let new_run =
+        daemon::database::types::NewRun::new(&run_id, run.game, run.category, submitted_date);
     db.insert_run(new_run)
         .await
         .or_else(|e| {
@@ -217,11 +214,11 @@ async fn run_src(
         })
         .context("Failed to insert run into database")?;
 
-    db.mark_run_processing(&fetched_run_id).await?;
+    db.mark_run_processing(&run_id).await?;
 
     let result = download_and_run_replay(
         &client,
-        &fetched_run_id,
+        &run_id,
         run_rules,
         expected_mods,
         install_dir,
@@ -231,7 +228,7 @@ async fn run_src(
 
     let report = result.as_ref().ok().cloned();
     let retry_config = daemon::retry::RetryConfig::default();
-    db.process_replay_result(&fetched_run_id, result, &retry_config)
+    db.process_replay_result(&run_id, result, &retry_config)
         .await?;
 
     report.ok_or_else(|| anyhow::anyhow!("Failed to process replay"))

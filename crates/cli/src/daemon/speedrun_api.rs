@@ -276,6 +276,16 @@ pub struct Run {
     pub submitted: Option<String>,
 }
 
+impl Run {
+    pub fn get_submitted_date(&self) -> Result<DateTime<Utc>, ApiError> {
+        let submitted_str = self
+            .submitted
+            .as_ref()
+            .ok_or_else(|| ApiError::MissingField("Run has no submitted date".to_string()))?;
+        parse_datetime(submitted_str)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Game {
     pub names: GameNames,

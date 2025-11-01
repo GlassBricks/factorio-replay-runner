@@ -43,14 +43,14 @@ pub async fn run_replay(
     expected_mods: &ExpectedMods,
     log_path: &Path,
 ) -> Result<ReplayReport, FactorioError> {
-    info!("=== Run Information ===");
+    info!("=== Replay file information ===");
     info!("Save file: {}", save_path.display());
 
     let version = save_file.get_factorio_version()?;
     info!("Save version: {}", version);
 
     let mut instance = get_instance(install_dir, save_file).await?;
-    perform_pre_run_checks(&mut instance, save_path, expected_mods).await?;
+    do_pre_run_checks(&mut instance, save_path, expected_mods).await?;
     let installed_save_path = install_replay_script(save_path, save_file, rules).await?;
     run_and_log_replay(&instance, &installed_save_path, log_path, rules).await
 }
@@ -63,12 +63,12 @@ async fn get_instance(
     install_dir.get_or_download_factorio(version).await
 }
 
-async fn perform_pre_run_checks(
+async fn do_pre_run_checks(
     instance: &mut FactorioInstance,
     save_path: &Path,
     expected_mods: &ExpectedMods,
 ) -> Result<(), FactorioError> {
-    info!("Performing pre-run checks");
+    info!("Doing pre-run checks");
     let mod_versions = instance.get_mod_versions(save_path).await?;
     check_expected_mods(expected_mods, &mod_versions)?;
     debug!("Pre-run checks passed");
@@ -184,7 +184,7 @@ async fn record_output(
     }
 
     if exited_successfully {
-        info!("Replay exited successfully via exit signal");
+        info!("Replay finished");
     }
 
     Ok((max_level, exited_successfully))

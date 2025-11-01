@@ -445,11 +445,8 @@ impl Database {
                 self.clear_retry_fields(run_id).await?;
 
                 if report.win_condition_not_completed {
+                    warn!("Run {} failed: win condition never met", run_id);
                     self.mark_run_failed(run_id).await?;
-                    warn!(
-                        "Run {} failed: win_on_scenario_finished enabled but scenario never completed",
-                        run_id
-                    );
                     return Ok(());
                 }
 
@@ -970,7 +967,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_replay_result_with_retry() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{RunProcessingError, ErrorClass};
+        use crate::error::{ErrorClass, RunProcessingError};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -998,7 +995,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_replay_result_final_error() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{RunProcessingError, ErrorClass};
+        use crate::error::{ErrorClass, RunProcessingError};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -1062,7 +1059,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_workflow_end_to_end() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{RunProcessingError, ErrorClass};
+        use crate::error::{ErrorClass, RunProcessingError};
         use replay_script::MsgLevel;
 
         let db = Database::in_memory().await.unwrap();
@@ -1117,7 +1114,7 @@ mod tests {
     #[tokio::test]
     async fn test_permanent_failure_after_max_attempts() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{RunProcessingError, ErrorClass};
+        use crate::error::{ErrorClass, RunProcessingError};
 
         let db = Database::in_memory().await.unwrap();
 
@@ -1165,7 +1162,7 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limited_retry_scheduling() {
         use crate::daemon::retry::RetryConfig;
-        use crate::error::{RunProcessingError, ErrorClass};
+        use crate::error::{ErrorClass, RunProcessingError};
         use std::time::Duration;
 
         let db = Database::in_memory().await.unwrap();

@@ -1,6 +1,4 @@
 use anyhow::Result;
-use chrono::DateTime;
-use chrono::Utc;
 use factorio_manager::error::FactorioError;
 use factorio_manager::expected_mods::ExpectedMods;
 use factorio_manager::factorio_install_dir::{FactorioInstallDir, VersionStr};
@@ -16,11 +14,10 @@ use zip_downloader::services::speedrun::SpeedrunService;
 use crate::config::RunRules;
 use crate::daemon::config::SrcRunRules;
 use crate::daemon::database::connection::Database;
-use crate::daemon::database::types::NewRun;
 use crate::daemon::retry::RetryConfig;
-use crate::daemon::speedrun_api::{ApiError, RunsQuery, SpeedrunClient, SpeedrunOps};
-use crate::error::RunProcessingError;
+use crate::daemon::speedrun_api::{ApiError, SpeedrunClient, SpeedrunOps};
 use crate::error::ErrorClass;
+use crate::error::RunProcessingError;
 use crate::run_replay::{ReplayReport, run_replay};
 
 const MIN_FACTORIO_VERSION: VersionStr = VersionStr::new(2, 0, 65);
@@ -52,7 +49,7 @@ impl<'a> RunProcessor<'a> {
     }
 
     async fn fetch_run_description(&self, run_id: &str) -> Result<String, ApiError> {
-        info!("Fetching run data");
+        info!("Fetching run description");
         let run = self.client.get_run(run_id).await?;
 
         let description = run.comment.as_ref().ok_or_else(|| {
@@ -92,66 +89,6 @@ impl<'a> RunProcessor<'a> {
     }
 }
 
-pub async fn fetch_run_details(
-    client: &SpeedrunClient,
-    run_id: &str,
-) -> Result<(String, String, String, DateTime<Utc>)> {
-    info!("Fetching run details for {}", run_id);
-    let run = client.get_run(run_id).await?;
-
-    let game_id = run.game;
-    let category_id = run.category;
-    let run_id = run.id;
-    let submitted_date = run
-        .submitted
-        .ok_or_else(|| ApiError::MissingField("Run has no submitted date".to_string()))?;
-    let submitted_date = super::speedrun_api::parse_datetime(&submitted_date)?;
-
-    Ok((run_id, game_id, category_id, submitted_date))
-}
-
-pub async fn poll_game_category(
-    speedrun_ops: &SpeedrunOps,
-    game_id: &str,
-    category_id: &str,
-    cutoff_date: &DateTime<Utc>,
-) -> Result<Vec<NewRun>, ApiError> {
-    info!(
-        "Polling for new runs: game={}, category={}",
-        speedrun_ops
-            .get_game_name(game_id)
-            .await
-            .as_ref()
-            .map_or(game_id, |name| &name.as_str()),
-        speedrun_ops
-            .get_category_name(category_id)
-            .await
-            .as_ref()
-            .map_or(category_id, |name| &name.as_str())
-    );
-
-    let query = RunsQuery::new()
-        .game(game_id)
-        .category(category_id)
-        .orderby("submitted")
-        .direction("asc");
-
-    let runs = speedrun_ops.client.stream_runs(&query).await?;
-
-    let new_runs: Vec<NewRun> = runs
-        .into_iter()
-        .filter_map(|run| {
-            let submitted_dt = run.submitted?;
-            let submitted_date = super::speedrun_api::parse_datetime(&submitted_dt).ok()?;
-            (submitted_date > *cutoff_date)
-                .then(|| NewRun::new(run.id, game_id, category_id, submitted_date))
-        })
-        .collect();
-
-    info!("Found {} new runs", new_runs.len());
-    Ok(new_runs)
-}
-
 pub async fn download_and_run_replay(
     client: &SpeedrunClient,
     run_id: &str,
@@ -160,9 +97,6 @@ pub async fn download_and_run_replay(
     install_dir: &Path,
     output_dir: &Path,
 ) -> Result<ReplayReport, RunProcessingError> {
-    info!("=== Processing Run ===");
-    info!("Run ID: {}", run_id);
-
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)
         .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
@@ -187,6 +121,5 @@ pub async fn download_and_run_replay(
         &log_path,
     )
     .await?;
-
     Ok(report)
 }

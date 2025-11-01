@@ -13,7 +13,7 @@ pub enum ProcessResult {
 }
 
 pub async fn process_runs_loop(ctx: RunProcessingContext, work_notify: Arc<Notify>) -> Result<()> {
-    info!("Starting run processor (event-driven)");
+    info!("Starting run processor");
 
     loop {
         match find_run_to_process(&ctx).await {
@@ -22,9 +22,8 @@ pub async fn process_runs_loop(ctx: RunProcessingContext, work_notify: Arc<Notif
                 error!("Run processing iteration failed: {:#}", e);
             }
             Ok(ProcessResult::NoWork) => {
-                info!("No work available - run processor sleeping");
+                info!("No more runs available - sleeping");
                 work_notify.notified().await;
-                info!("Run processor woken - checking for work");
             }
         }
     }
@@ -72,18 +71,15 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
 
     if run.retry_count > 0 {
         info!(
-            "Processing run {} for {} (retry attempt {}/{})",
+            "Processing run {} for {} (retry {}/{})",
             run.run_id, game_category, run.retry_count, ctx.retry_config.max_attempts
         );
     } else {
-        info!(
-            "Processing run {} for {} (initial attempt)",
-            run.run_id, game_category
-        );
+        info!("Processing run {} for {}", run.run_id, game_category);
     }
 
     let result = download_and_run_replay(
-        ctx.client(),
+        &ctx.speedrun_ops.client,
         &run.run_id,
         run_rules,
         expected_mods,
@@ -92,9 +88,12 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
     )
     .await;
 
+    info!("Saving replay result");
     ctx.db
         .process_replay_result(&run.run_id, result, &ctx.retry_config)
-        .await
+        .await?;
+    info!("Run {} finished successfully", run.run_id);
+    Ok(())
 }
 
 #[cfg(test)]
