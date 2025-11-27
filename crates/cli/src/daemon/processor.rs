@@ -69,14 +69,34 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .format_game_category(&run.game_id, &run.category_id)
         .await;
 
-    if run.retry_count > 0 {
-        info!(
-            "Processing run {} for {} (retry {}/{})",
-            run.run_id, game_category, run.retry_count, ctx.retry_config.max_attempts
-        );
+    let src_run = ctx.speedrun_ops.client.get_run(&run.run_id).await.ok();
+
+    let header = if run.retry_count > 0 {
+        format!(
+            "=== Processing run {} (retry {}/{}) ===",
+            run.run_id, run.retry_count, ctx.retry_config.max_attempts
+        )
     } else {
-        info!("Processing run {} for {}", run.run_id, game_category);
-    }
+        format!("=== Processing run {} ===", run.run_id)
+    };
+
+    info!(
+        "{}\nGame: {}\nPlayers: {}\nTime: {}\nSubmitted: {}",
+        header,
+        game_category,
+        src_run
+            .as_ref()
+            .and_then(|r| r.format_players())
+            .unwrap_or_else(|| "unknown".to_string()),
+        src_run
+            .as_ref()
+            .and_then(|r| r.format_time())
+            .unwrap_or_else(|| "unknown".to_string()),
+        src_run
+            .as_ref()
+            .and_then(|r| r.submitted.clone())
+            .unwrap_or_else(|| "unknown".to_string()),
+    );
 
     let result = download_and_run_replay(
         &ctx.speedrun_ops.client,

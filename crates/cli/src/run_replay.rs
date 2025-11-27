@@ -43,11 +43,12 @@ pub async fn run_replay(
     expected_mods: &ExpectedMods,
     log_path: &Path,
 ) -> Result<ReplayReport, FactorioError> {
-    info!("=== Replay file information ===");
-    info!("Save file: {}", save_path.display());
-
     let version = save_file.get_factorio_version()?;
-    info!("Save version: {}", version);
+    info!(
+        "=== Running replay ===\nSave file: {}\nSave version: {}",
+        save_path.display(),
+        version
+    );
 
     let mut instance = get_instance(install_dir, save_file).await?;
     do_pre_run_checks(&mut instance, save_path, expected_mods).await?;
@@ -94,7 +95,7 @@ async fn run_and_log_replay(
     log_path: &Path,
     rules: &RunRules,
 ) -> Result<ReplayReport, FactorioError> {
-    info!("Starting replay, at {}", log_path.display());
+    info!("Starting replay. Log file at {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
     let (max_msg_level, exited_via_script) = record_output(&mut process, log_path).await?;
 

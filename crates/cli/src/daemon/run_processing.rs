@@ -105,21 +105,35 @@ pub async fn download_and_run_replay(
         .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
 
+    let result = run_replay_with_save(&mut save_file, run_rules, expected_mods, install_dir).await;
+    cleanup_save_files(&save_file.0);
+    result
+}
+
+async fn run_replay_with_save(
+    save_file: &mut WrittenSaveFile,
+    run_rules: &RunRules,
+    expected_mods: &ExpectedMods,
+    install_dir: &Path,
+) -> Result<ReplayReport, RunProcessingError> {
     let version = save_file.1.get_factorio_version()?;
     if version < MIN_FACTORIO_VERSION {
         return Err(FactorioError::VersionTooOld { version }.into());
     }
 
     let install_dir = FactorioInstallDir::new_or_create(install_dir)?;
-    let log_path = working_dir.join("output.log");
+    let log_path = save_file.0.with_file_name("output.log");
 
-    let report = run_replay(
-        &install_dir,
-        &mut save_file,
-        run_rules,
-        expected_mods,
-        &log_path,
-    )
-    .await?;
-    Ok(report)
+    run_replay(&install_dir, save_file, run_rules, expected_mods, &log_path)
+        .await
+        .map_err(RunProcessingError::from)
+}
+
+fn cleanup_save_files(save_path: &Path) {
+    let installed_path = save_path.with_extension("installed.zip");
+    for path in [save_path, installed_path.as_path()] {
+        if let Err(e) = std::fs::remove_file(path) {
+            log::warn!("Failed to clean up {}: {}", path.display(), e);
+        }
+    }
 }

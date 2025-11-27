@@ -11,7 +11,7 @@ use services::{FileDownloadHandle, FileServiceDyn};
 pub use services::{FileMeta, FileService};
 
 use anyhow::Result;
-use log::{debug, error};
+use log::{debug, error, info};
 use tempfile::NamedTempFile;
 
 pub struct DownloadedFile {
@@ -155,32 +155,27 @@ impl FileDownloader {
         debug!("Starting download");
 
         let mut download_handle = Self::get_download_handle(&mut self.services, input)?;
-        let handle_display = download_handle.to_string();
-        debug!("Found {handle_display}");
+        info!("Link: {download_handle}");
 
-        Self::download_with_handle(
-            &mut *download_handle,
-            out_file,
-            &self.security_config,
-            &handle_display,
-        )
-        .await
+        Self::download_with_handle(&mut *download_handle, out_file, &self.security_config).await
     }
 
     async fn download_with_handle(
         download_handle: &mut dyn FileDownloadHandle,
         out_file: &Path,
         security_config: &SecurityConfig,
-        handle_display: &str,
     ) -> Result<DownloadedFile, DownloadError> {
         debug!("Getting file info");
-        let file_info = download_handle.get_file_info().await?;
-        // .map_err(|e| e.with_context(handle_display))?;
+        let file_info = download_handle
+            .get_file_info()
+            .await
+            .map_err(|e| e.with_context(&download_handle.to_string()))?;
 
         debug!("File info: {file_info:?}");
         debug!("Running initial checks");
-        security::validate_file_info(&file_info, security_config)
-            .map_err(|e| DownloadError::SecurityViolation(e.context(handle_display.to_string())))?;
+        security::validate_file_info(&file_info, security_config).map_err(|e| {
+            DownloadError::SecurityViolation(e.context(download_handle.to_string()))
+        })?;
 
         debug!("Downloading file");
 
@@ -193,17 +188,19 @@ impl FileDownloader {
         download_handle
             .download(&file_path)
             .await
-            .map_err(|e| e.with_context(handle_display))?;
+            .map_err(|e| e.with_context(&download_handle.to_string()))?;
 
         debug!("Running file checks");
         let mut reopened_file = File::open(&file_path).map_err(|e| {
             DownloadError::IoError(std::io::Error::new(
                 e.kind(),
-                format!("{}: {}", handle_display, e),
+                format!("{}: {}", download_handle, e),
             ))
         })?;
         security::validate_downloaded_file(&mut reopened_file, &file_info, security_config)
-            .map_err(|e| DownloadError::SecurityViolation(e.context(handle_display.to_string())))?;
+            .map_err(|e| {
+                DownloadError::SecurityViolation(e.context(download_handle.to_string()))
+            })?;
 
         Ok(DownloadedFile {
             name: file_info.name,

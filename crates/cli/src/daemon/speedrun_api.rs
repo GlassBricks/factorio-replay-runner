@@ -43,7 +43,7 @@ impl SpeedrunClient {
     }
 
     pub async fn get_run(&self, run_id: &str) -> Result<Run, ApiError> {
-        let url = format!("{}/runs/{}", API_BASE, run_id);
+        let url = format!("{}/runs/{}?embed=players", API_BASE, run_id);
         let response = self
             .client
             .get(&url)
@@ -268,12 +268,46 @@ struct CategoryResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct RunTimes {
+    pub primary_t: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunPlayer {
+    pub names: Option<PlayerNames>,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlayerNames {
+    pub international: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum Players {
+    Embedded { data: Vec<RunPlayer> },
+    Simple(Vec<RunPlayer>),
+}
+
+impl Players {
+    pub fn as_slice(&self) -> &[RunPlayer] {
+        match self {
+            Players::Embedded { data } => data,
+            Players::Simple(v) => v,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Run {
     pub id: String,
     pub game: String,
     pub category: String,
     pub comment: Option<String>,
     pub submitted: Option<String>,
+    pub times: Option<RunTimes>,
+    pub players: Option<Players>,
 }
 
 impl Run {
@@ -283,6 +317,28 @@ impl Run {
             .as_ref()
             .ok_or_else(|| ApiError::MissingField("Run has no submitted date".to_string()))?;
         parse_datetime(submitted_str)
+    }
+
+    pub fn format_time(&self) -> Option<String> {
+        let secs = self.times.as_ref()?.primary_t;
+        let hours = (secs / 3600.0) as u32;
+        let mins = ((secs % 3600.0) / 60.0) as u32;
+        let secs = (secs % 60.0) as u32;
+        Some(format!("{}:{:02}:{:02}", hours, mins, secs))
+    }
+
+    pub fn format_players(&self) -> Option<String> {
+        let players = self.players.as_ref()?.as_slice();
+        let names: Vec<&str> = players
+            .iter()
+            .filter_map(|p| {
+                p.names
+                    .as_ref()
+                    .map(|n| n.international.as_str())
+                    .or(p.name.as_deref())
+            })
+            .collect();
+        (!names.is_empty()).then(|| names.join(", "))
     }
 }
 
