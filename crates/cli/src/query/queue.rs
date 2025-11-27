@@ -12,14 +12,12 @@ pub struct QueueArgs {
 pub async fn handle_queue(db: &Database, _args: QueueArgs) -> Result<()> {
     let discovered_filter = RunFilter {
         status: Some(RunStatus::Discovered),
-        limit: 1000,
         ..Default::default()
     };
     let discovered_runs = db.query_runs(discovered_filter).await?;
 
     let retry_filter = RunFilter {
         status: Some(RunStatus::Error),
-        limit: 1000,
         ..Default::default()
     };
     let error_runs = db.query_runs(retry_filter).await?;

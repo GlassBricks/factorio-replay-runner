@@ -1,9 +1,12 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Args;
 
 use crate::daemon::database::connection::Database;
 use crate::daemon::database::types::RunStatus;
-use crate::query::common::RunFilterArgs;
+use crate::daemon::speedrun_api::SpeedrunOps;
+use crate::query::common::{
+    RunDisplay, RunFilterArgs, format_runs_as_table, resolve_game_category,
+};
 
 #[derive(Args)]
 pub struct ResetRunArgs {
@@ -44,10 +47,14 @@ pub struct ResetArgs {
     /// Also clear error message and retry count
     #[arg(long)]
     pub clear_error: bool,
+
+    /// Skip confirmation prompt
+    #[arg(long)]
+    pub force: bool,
 }
 
-pub async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
-    let filter = args.filter.with_unlimited().to_filter()?;
+pub async fn handle_reset(db: &Database, ops: &SpeedrunOps, args: ResetArgs) -> Result<()> {
+    let filter = args.filter.to_filter()?;
     let runs = db.query_runs(filter).await?;
 
     if runs.is_empty() {
@@ -55,7 +62,35 @@ pub async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
         return Ok(());
     }
 
-    println!("Resetting {} runs to discovered status...", runs.len());
+    let mut run_displays = Vec::new();
+    for run in &runs {
+        let (game_name, category_name) =
+            resolve_game_category(ops, &run.game_id, &run.category_id).await;
+        run_displays.push(RunDisplay {
+            run,
+            game_name,
+            category_name,
+        });
+    }
+
+    println!("Found {} run(s) matching the criteria:\n", runs.len());
+    println!("{}\n", format_runs_as_table(&run_displays));
+
+    if !args.force {
+        println!(
+            "Are you sure you want to reset {} run(s) to discovered status? (y/N): ",
+            runs.len()
+        );
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read user input")?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Reset cancelled");
+            return Ok(());
+        }
+    }
 
     for run in &runs {
         db.update_run_status(&run.run_id, RunStatus::Discovered, None)
@@ -66,7 +101,7 @@ pub async fn handle_reset(db: &Database, args: ResetArgs) -> Result<()> {
         }
     }
 
-    println!("Reset {} runs", runs.len());
+    println!("Reset {} run(s)", runs.len());
     if args.clear_error {
         println!("Cleared retry fields");
     }

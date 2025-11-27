@@ -213,14 +213,24 @@ impl Database {
         if filter.before_date.is_some() {
             conditions.push("submitted_date < ?");
         }
+        if filter.error_class.is_some() {
+            conditions.push("error_class = ?");
+        }
+        if filter.error_reason.is_some() {
+            conditions.push("error_message LIKE ?");
+        }
 
         for condition in conditions {
             query_parts.push(format!("AND {}", condition));
         }
 
         query_parts.push("ORDER BY submitted_date DESC".to_string());
-        query_parts.push("LIMIT ?".to_string());
-        query_parts.push("OFFSET ?".to_string());
+        if filter.limit.is_some() {
+            query_parts.push("LIMIT ?".to_string());
+        }
+        if filter.offset > 0 {
+            query_parts.push("OFFSET ?".to_string());
+        }
 
         let query_str = query_parts.join(" ");
         let mut query = sqlx::query(&query_str);
@@ -240,8 +250,18 @@ impl Database {
         if let Some(before_date) = filter.before_date {
             query = query.bind(before_date);
         }
-
-        query = query.bind(filter.limit).bind(filter.offset);
+        if let Some(error_class) = filter.error_class {
+            query = query.bind(error_class);
+        }
+        if let Some(error_reason) = filter.error_reason {
+            query = query.bind(format!("%{}%", error_reason));
+        }
+        if let Some(limit) = filter.limit {
+            query = query.bind(limit);
+        }
+        if filter.offset > 0 {
+            query = query.bind(filter.offset);
+        }
 
         let rows = query.fetch_all(self.pool()).await?;
 
@@ -1179,7 +1199,7 @@ mod tests {
         .unwrap();
 
         let filter = RunFilter {
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1214,7 +1234,7 @@ mod tests {
 
         let filter = RunFilter {
             status: Some(RunStatus::Passed),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1254,7 +1274,7 @@ mod tests {
         let filter = RunFilter {
             game_id: Some("game1".to_string()),
             category_id: Some("cat1".to_string()),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1278,7 +1298,7 @@ mod tests {
         }
 
         let filter = RunFilter {
-            limit: 2,
+            limit: Some(2),
             offset: 1,
             ..Default::default()
         };
@@ -1449,7 +1469,7 @@ mod tests {
         let since_date = "2024-01-10T00:00:00Z".parse().unwrap();
         let filter = RunFilter {
             since_date: Some(since_date),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1493,7 +1513,7 @@ mod tests {
         let filter = RunFilter {
             since_date: Some(since_date),
             category_id: Some("cat1".to_string()),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1533,7 +1553,7 @@ mod tests {
         let before_date = "2024-01-07T00:00:00Z".parse().unwrap();
         let filter = RunFilter {
             before_date: Some(before_date),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
@@ -1575,11 +1595,118 @@ mod tests {
         let filter = RunFilter {
             since_date: Some("2024-01-03T00:00:00Z".parse().unwrap()),
             before_date: Some("2024-01-08T00:00:00Z".parse().unwrap()),
-            limit: 10,
+            limit: Some(10),
             ..Default::default()
         };
         let runs = db.query_runs(filter).await.unwrap();
 
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run2");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_error_class_filter() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.mark_run_error("run1", "Network timeout").await.unwrap();
+        db.schedule_retry("run1", 1, "retryable", Utc::now())
+            .await
+            .unwrap();
+
+        db.mark_run_error("run2", "Invalid save file")
+            .await
+            .unwrap();
+        db.mark_run_permanently_failed("run2", "final")
+            .await
+            .unwrap();
+
+        let filter = RunFilter {
+            error_class: Some("retryable".to_string()),
+            limit: Some(10),
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run1");
+
+        let filter = RunFilter {
+            error_class: Some("final".to_string()),
+            limit: Some(10),
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run2");
+    }
+
+    #[tokio::test]
+    async fn test_query_runs_with_error_reason_filter() {
+        let db = Database::in_memory().await.unwrap();
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        db.mark_run_error("run1", "Network timeout connecting to server")
+            .await
+            .unwrap();
+        db.mark_run_error("run2", "Invalid save file format")
+            .await
+            .unwrap();
+
+        let filter = RunFilter {
+            error_reason: Some("timeout".to_string()),
+            limit: Some(10),
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run1");
+
+        let filter = RunFilter {
+            error_reason: Some("save file".to_string()),
+            limit: Some(10),
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].run_id, "run2");
     }

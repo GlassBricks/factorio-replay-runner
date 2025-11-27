@@ -28,11 +28,19 @@ pub(crate) struct RunFilterArgs {
     #[arg(long)]
     pub older_than: Option<String>,
 
-    /// Maximum number of runs to display
-    #[arg(long, default_value = "50")]
-    pub limit: u32,
+    /// Filter by error class (final, retryable, rate_limited)
+    #[arg(long)]
+    pub error_class: Option<String>,
 
-    /// Number of runs to skip
+    /// Filter by error message (substring match)
+    #[arg(long)]
+    pub error_reason: Option<String>,
+
+    /// Maximum number of runs to display
+    #[arg(long)]
+    pub limit: Option<u32>,
+
+    /// Runs offset (for pagination)
     #[arg(long, default_value = "0")]
     pub offset: u32,
 }
@@ -64,6 +72,8 @@ impl RunFilterArgs {
             category_id: self.category_id.clone(),
             since_date,
             before_date,
+            error_class: self.error_class.clone(),
+            error_reason: self.error_reason.clone(),
             limit: self.limit,
             offset: self.offset,
         })
@@ -74,17 +84,14 @@ impl RunFilterArgs {
         self
     }
 
-    pub fn with_unlimited(mut self) -> Self {
-        self.limit = u32::MAX;
-        self
-    }
-
     pub fn has_any_filter(&self) -> bool {
         self.status.is_some()
             || self.game_id.is_some()
             || self.category_id.is_some()
             || self.newer_than.is_some()
             || self.older_than.is_some()
+            || self.error_class.is_some()
+            || self.error_reason.is_some()
     }
 }
 

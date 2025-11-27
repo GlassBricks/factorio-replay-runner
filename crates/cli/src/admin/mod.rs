@@ -38,7 +38,9 @@ pub async fn handle_admin_command(args: AdminArgs) -> Result<()> {
 
     match args.subcommand {
         AdminSubcommand::ResetRun(reset_args) => reset::handle_reset_run(&db, reset_args).await,
-        AdminSubcommand::Reset(reset_args) => reset::handle_reset(&db, reset_args).await,
+        AdminSubcommand::Reset(reset_args) => {
+            reset::handle_reset(&db, &speedrun_ops, reset_args).await
+        }
         AdminSubcommand::Cleanup(cleanup_args) => {
             cleanup::handle_cleanup(&db, &speedrun_ops, cleanup_args).await
         }

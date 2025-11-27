@@ -19,7 +19,9 @@ pub struct RunFilter {
     pub category_id: Option<String>,
     pub since_date: Option<DateTime<Utc>>,
     pub before_date: Option<DateTime<Utc>>,
-    pub limit: u32,
+    pub error_class: Option<String>,
+    pub error_reason: Option<String>,
+    pub limit: Option<u32>,
     pub offset: u32,
 }
 

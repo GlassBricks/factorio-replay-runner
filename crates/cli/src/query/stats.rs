@@ -13,7 +13,7 @@ pub struct StatsArgs {
 }
 
 pub async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
-    let filter = args.filter.with_unlimited().to_filter()?;
+    let filter = args.filter.to_filter()?;
     let all_runs = db.query_runs(filter).await?;
     let counts = db.count_runs_by_status().await?;
 

@@ -28,7 +28,7 @@ pub async fn handle_cleanup(db: &Database, ops: &SpeedrunOps, args: CleanupArgs)
         ));
     }
 
-    let filter = args.filter.with_unlimited().to_filter()?;
+    let filter = args.filter.to_filter()?;
     let runs_to_delete = db.query_runs(filter).await?;
 
     if runs_to_delete.is_empty() {
