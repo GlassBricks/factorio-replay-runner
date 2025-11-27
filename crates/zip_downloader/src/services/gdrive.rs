@@ -8,10 +8,11 @@ use regex::Regex;
 use std::path::Path;
 use tokio::io::AsyncWriteExt as _;
 
-const DRIVE_PUBLIC_BASE: &str = "https://drive.google.com/uc?export=download&id";
-
 fn public_download_url(file_id: &str) -> String {
-    format!("{}={}", DRIVE_PUBLIC_BASE, file_id)
+    format!(
+        "https://drive.usercontent.google.com/download?id={}&export=download&confirm=t",
+        file_id
+    )
 }
 
 async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMeta, DownloadError> {

@@ -174,10 +174,8 @@ impl FileDownloader {
         handle_display: &str,
     ) -> Result<DownloadedFile, DownloadError> {
         debug!("Getting file info");
-        let file_info = download_handle
-            .get_file_info()
-            .await
-            .map_err(|e| e.with_context(handle_display))?;
+        let file_info = download_handle.get_file_info().await?;
+        // .map_err(|e| e.with_context(handle_display))?;
 
         debug!("File info: {file_info:?}");
         debug!("Running initial checks");

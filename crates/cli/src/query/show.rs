@@ -8,6 +8,7 @@ use super::common::{format_status, resolve_game_category};
 
 #[derive(Args)]
 pub struct ShowArgs {
+    /// Speedrun.com run ID
     pub run_id: String,
 }
 

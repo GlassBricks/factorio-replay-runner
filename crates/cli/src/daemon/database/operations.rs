@@ -210,6 +210,9 @@ impl Database {
         if filter.since_date.is_some() {
             conditions.push("submitted_date >= ?");
         }
+        if filter.before_date.is_some() {
+            conditions.push("submitted_date < ?");
+        }
 
         for condition in conditions {
             query_parts.push(format!("AND {}", condition));
@@ -233,6 +236,9 @@ impl Database {
         }
         if let Some(since_date) = filter.since_date {
             query = query.bind(since_date);
+        }
+        if let Some(before_date) = filter.before_date {
+            query = query.bind(before_date);
         }
 
         query = query.bind(filter.limit).bind(filter.offset);
@@ -362,59 +368,6 @@ impl Database {
         .await?;
 
         Ok(result.latest)
-    }
-
-    pub async fn query_runs_for_deletion(
-        &self,
-        before_date: Option<DateTime<Utc>>,
-        status: Option<RunStatus>,
-    ) -> Result<Vec<Run>> {
-        let mut query_parts = vec!["SELECT run_id, game_id, category_id, submitted_date, status, error_message, retry_count, next_retry_at, error_class, created_at, updated_at FROM runs WHERE 1=1".to_string()];
-        let mut conditions = Vec::new();
-
-        if before_date.is_some() {
-            conditions.push("submitted_date < ?");
-        }
-        if status.is_some() {
-            conditions.push("status = ?");
-        }
-
-        for condition in conditions {
-            query_parts.push(format!("AND {}", condition));
-        }
-
-        query_parts.push("ORDER BY submitted_date ASC".to_string());
-
-        let query_str = query_parts.join(" ");
-        let mut query = sqlx::query(&query_str);
-
-        if let Some(date) = before_date {
-            query = query.bind(date);
-        }
-        if let Some(s) = status {
-            query = query.bind(s);
-        }
-
-        let rows = query.fetch_all(self.pool()).await?;
-
-        rows.iter()
-            .map(|r| {
-                Ok::<_, sqlx::Error>(Run {
-                    run_id: r.try_get("run_id")?,
-                    game_id: r.try_get("game_id")?,
-                    category_id: r.try_get("category_id")?,
-                    submitted_date: r.try_get("submitted_date")?,
-                    status: r.try_get("status")?,
-                    error_message: r.try_get("error_message")?,
-                    retry_count: r.try_get("retry_count")?,
-                    next_retry_at: r.try_get("next_retry_at")?,
-                    error_class: r.try_get("error_class")?,
-                    created_at: r.try_get("created_at")?,
-                    updated_at: r.try_get("updated_at")?,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into)
     }
 
     pub async fn delete_runs(&self, run_ids: &[String]) -> Result<u64> {
@@ -1549,7 +1502,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_runs_for_deletion_by_date() {
+    async fn test_query_runs_with_before_date_filter() {
         let db = Database::in_memory().await.unwrap();
 
         db.insert_run(NewRun::new(
@@ -1577,16 +1530,21 @@ mod tests {
         .await
         .unwrap();
 
-        let before_date = Some("2024-01-07T00:00:00Z".parse().unwrap());
-        let runs = db.query_runs_for_deletion(before_date, None).await.unwrap();
+        let before_date = "2024-01-07T00:00:00Z".parse().unwrap();
+        let filter = RunFilter {
+            before_date: Some(before_date),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
 
         assert_eq!(runs.len(), 2);
-        assert_eq!(runs[0].run_id, "run1");
-        assert_eq!(runs[1].run_id, "run2");
+        assert_eq!(runs[0].run_id, "run2");
+        assert_eq!(runs[1].run_id, "run1");
     }
 
     #[tokio::test]
-    async fn test_query_runs_for_deletion_by_status() {
+    async fn test_query_runs_with_date_range() {
         let db = Database::in_memory().await.unwrap();
 
         db.insert_run(NewRun::new(
@@ -1601,49 +1559,7 @@ mod tests {
             "run2",
             "game1",
             "cat1",
-            "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
-        .await
-        .unwrap();
-        db.insert_run(NewRun::new(
-            "run3",
-            "game1",
-            "cat1",
-            "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
-        .await
-        .unwrap();
-
-        db.mark_run_passed("run1").await.unwrap();
-        db.mark_run_failed("run2").await.unwrap();
-
-        let runs = db
-            .query_runs_for_deletion(None, Some(RunStatus::Passed))
-            .await
-            .unwrap();
-
-        assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].run_id, "run1");
-        assert_eq!(runs[0].status, RunStatus::Passed);
-    }
-
-    #[tokio::test]
-    async fn test_query_runs_for_deletion_by_date_and_status() {
-        let db = Database::in_memory().await.unwrap();
-
-        db.insert_run(NewRun::new(
-            "run1",
-            "game1",
-            "cat1",
-            "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
-        .await
-        .unwrap();
-        db.insert_run(NewRun::new(
-            "run2",
-            "game1",
-            "cat1",
-            "2024-01-02T00:00:00Z".parse().unwrap(),
+            "2024-01-05T00:00:00Z".parse().unwrap(),
         ))
         .await
         .unwrap();
@@ -1656,19 +1572,16 @@ mod tests {
         .await
         .unwrap();
 
-        db.mark_run_passed("run1").await.unwrap();
-        db.mark_run_passed("run2").await.unwrap();
-        db.mark_run_passed("run3").await.unwrap();
+        let filter = RunFilter {
+            since_date: Some("2024-01-03T00:00:00Z".parse().unwrap()),
+            before_date: Some("2024-01-08T00:00:00Z".parse().unwrap()),
+            limit: 10,
+            ..Default::default()
+        };
+        let runs = db.query_runs(filter).await.unwrap();
 
-        let before_date = Some("2024-01-05T00:00:00Z".parse().unwrap());
-        let runs = db
-            .query_runs_for_deletion(before_date, Some(RunStatus::Passed))
-            .await
-            .unwrap();
-
-        assert_eq!(runs.len(), 2);
-        assert_eq!(runs[0].run_id, "run1");
-        assert_eq!(runs[1].run_id, "run2");
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "run2");
     }
 
     #[tokio::test]

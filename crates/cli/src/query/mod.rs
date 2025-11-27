@@ -5,20 +5,16 @@ use std::path::PathBuf;
 use crate::daemon::database::connection::Database;
 use crate::daemon::speedrun_api::{SpeedrunClient, SpeedrunOps};
 
-mod cleanup;
-mod common;
+pub mod common;
 mod errors;
 mod list;
 mod queue;
-mod reset;
 mod show;
 mod stats;
 
-pub use cleanup::CleanupArgs;
 pub use errors::ErrorsArgs;
 pub use list::ListArgs;
 pub use queue::QueueArgs;
-pub use reset::ResetArgs;
 pub use show::ShowArgs;
 pub use stats::StatsArgs;
 
@@ -27,19 +23,23 @@ pub struct QueryArgs {
     #[command(subcommand)]
     pub subcommand: QuerySubcommand,
 
+    /// SQLite database file path
     #[arg(long, default_value = "run_verification.db")]
     pub database: PathBuf,
 }
 
 #[derive(Subcommand)]
 pub enum QuerySubcommand {
+    /// List runs with optional filters
     List(ListArgs),
+    /// Show details for a specific run
     Show(ShowArgs),
+    /// Display run statistics
     Stats(StatsArgs),
+    /// Show pending and scheduled runs
     Queue(QueueArgs),
+    /// Show runs with errors
     Errors(ErrorsArgs),
-    Reset(ResetArgs),
-    Cleanup(CleanupArgs),
 }
 
 pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
@@ -53,11 +53,8 @@ pub async fn handle_query_command(args: QueryArgs) -> Result<()> {
         QuerySubcommand::Stats(stats_args) => stats::handle_stats(&db, stats_args).await,
         QuerySubcommand::Queue(queue_args) => queue::handle_queue(&db, queue_args).await,
         QuerySubcommand::Errors(errors_args) => {
-            errors::handle_errors(&db, &speedrun_ops, errors_args).await
-        }
-        QuerySubcommand::Reset(reset_args) => reset::handle_reset(&db, reset_args).await,
-        QuerySubcommand::Cleanup(cleanup_args) => {
-            cleanup::handle_cleanup(&db, &speedrun_ops, cleanup_args).await
+            let filter = errors_args.into_filter_with_error_status().to_filter()?;
+            common::query_and_display_runs(&db, &speedrun_ops, filter).await
         }
     }
 }

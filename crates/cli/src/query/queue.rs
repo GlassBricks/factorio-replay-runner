@@ -5,7 +5,9 @@ use crate::daemon::database::connection::Database;
 use crate::daemon::database::types::{RunFilter, RunStatus};
 
 #[derive(Args)]
-pub struct QueueArgs {}
+pub struct QueueArgs {
+    // No arguments needed
+}
 
 pub async fn handle_queue(db: &Database, _args: QueueArgs) -> Result<()> {
     let discovered_filter = RunFilter {

@@ -2,43 +2,20 @@ use anyhow::Result;
 use clap::Args;
 
 use crate::daemon::database::connection::Database;
-use crate::daemon::database::types::{RunFilter, RunStatus};
+use crate::daemon::database::types::RunStatus;
 
-use super::common::parse_datetime;
+use super::common::RunFilterArgs;
 
 #[derive(Args)]
 pub struct StatsArgs {
-    #[arg(long)]
-    pub game_id: Option<String>,
-
-    #[arg(long)]
-    pub category_id: Option<String>,
-
-    #[arg(long)]
-    pub since: Option<String>,
+    #[command(flatten)]
+    pub filter: RunFilterArgs,
 }
 
 pub async fn handle_stats(db: &Database, args: StatsArgs) -> Result<()> {
-    let since_date = args.since.as_ref().map(|s| parse_datetime(s)).transpose()?;
-
-    let counts = db.count_runs_by_status().await?;
-
-    let mut filter = RunFilter {
-        limit: 1000000,
-        ..Default::default()
-    };
-
-    if let Some(game_id) = args.game_id {
-        filter.game_id = Some(game_id);
-    }
-    if let Some(category_id) = args.category_id {
-        filter.category_id = Some(category_id);
-    }
-    if let Some(since) = since_date {
-        filter.since_date = Some(since);
-    }
-
+    let filter = args.filter.with_unlimited().to_filter()?;
     let all_runs = db.query_runs(filter).await?;
+    let counts = db.count_runs_by_status().await?;
 
     let total = all_runs.len();
     let discovered = counts.get(&RunStatus::Discovered).unwrap_or(&0);

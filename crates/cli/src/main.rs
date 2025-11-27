@@ -17,6 +17,7 @@ use std::{
 
 use crate::daemon::{RunProcessingContext, SrcRunRules, download_and_run_replay};
 
+mod admin;
 mod config;
 mod daemon;
 mod error;
@@ -33,10 +34,16 @@ struct CliArgs {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run a replay from a local save file
     Run(RunReplayOnFileArgs),
+    /// Run a replay fetched from speedrun.com
     RunSrc(RunReplayFromSrcArgs),
+    /// Start the daemon to poll and process speedrun.com runs
     Daemon(DaemonArgs),
+    /// Query the database for run information
     Query(query::QueryArgs),
+    /// Administrative database operations
+    Admin(admin::AdminArgs),
 }
 
 #[derive(Args)]
@@ -110,6 +117,10 @@ async fn main() -> Result<()> {
         }
         Commands::Query(sub_args) => {
             query::handle_query_command(sub_args).await?;
+            Ok(())
+        }
+        Commands::Admin(sub_args) => {
+            admin::handle_admin_command(sub_args).await?;
             Ok(())
         }
     }

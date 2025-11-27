@@ -1,16 +1,127 @@
 use anyhow::{Context, Result};
+use chrono::Utc;
+use clap::Args;
 use comfy_table::{Cell, Table};
 
-use crate::daemon::database::types::{Run, RunStatus};
+use crate::daemon::database::types::{Run, RunFilter, RunStatus};
 use crate::daemon::speedrun_api::SpeedrunOps;
 
-pub(super) struct RunDisplay<'a> {
+#[derive(Args, Clone, Default)]
+pub(crate) struct RunFilterArgs {
+    /// Filter by run status (discovered, processing, passed, needs_review, failed, error)
+    #[arg(long)]
+    pub status: Option<String>,
+
+    /// Filter by speedrun.com game ID
+    #[arg(long)]
+    pub game_id: Option<String>,
+
+    /// Filter by speedrun.com category ID
+    #[arg(long)]
+    pub category_id: Option<String>,
+
+    /// Only show runs newer than this duration (e.g., 30d, 1w, 2weeks)
+    #[arg(long)]
+    pub newer_than: Option<String>,
+
+    /// Only show runs older than this duration (e.g., 30d, 1w, 2weeks)
+    #[arg(long)]
+    pub older_than: Option<String>,
+
+    /// Maximum number of runs to display
+    #[arg(long, default_value = "50")]
+    pub limit: u32,
+
+    /// Number of runs to skip
+    #[arg(long, default_value = "0")]
+    pub offset: u32,
+}
+
+impl RunFilterArgs {
+    pub fn to_filter(&self) -> Result<RunFilter> {
+        let status = self
+            .status
+            .as_ref()
+            .map(|s| parse_status(s))
+            .transpose()
+            .context("Invalid status value")?;
+
+        let since_date = self
+            .newer_than
+            .as_ref()
+            .map(|s| parse_relative_duration(s))
+            .transpose()?;
+
+        let before_date = self
+            .older_than
+            .as_ref()
+            .map(|s| parse_relative_duration(s))
+            .transpose()?;
+
+        Ok(RunFilter {
+            status,
+            game_id: self.game_id.clone(),
+            category_id: self.category_id.clone(),
+            since_date,
+            before_date,
+            limit: self.limit,
+            offset: self.offset,
+        })
+    }
+
+    pub fn with_status(mut self, status: &str) -> Self {
+        self.status = Some(status.to_string());
+        self
+    }
+
+    pub fn with_unlimited(mut self) -> Self {
+        self.limit = u32::MAX;
+        self
+    }
+
+    pub fn has_any_filter(&self) -> bool {
+        self.status.is_some()
+            || self.game_id.is_some()
+            || self.category_id.is_some()
+            || self.newer_than.is_some()
+            || self.older_than.is_some()
+    }
+}
+
+pub(crate) async fn query_and_display_runs(
+    db: &crate::daemon::database::connection::Database,
+    ops: &SpeedrunOps,
+    filter: RunFilter,
+) -> Result<()> {
+    let runs = db.query_runs(filter).await?;
+
+    if runs.is_empty() {
+        println!("No runs found matching the criteria");
+        return Ok(());
+    }
+
+    let mut run_displays = Vec::new();
+    for run in &runs {
+        let (game_name, category_name) =
+            resolve_game_category(ops, &run.game_id, &run.category_id).await;
+        run_displays.push(RunDisplay {
+            run,
+            game_name,
+            category_name,
+        });
+    }
+
+    println!("{}", format_runs_as_table(&run_displays));
+    Ok(())
+}
+
+pub(crate) struct RunDisplay<'a> {
     pub run: &'a Run,
     pub game_name: String,
     pub category_name: String,
 }
 
-pub(super) fn format_runs_as_table(runs: &[RunDisplay]) -> String {
+pub(crate) fn format_runs_as_table(runs: &[RunDisplay]) -> String {
     let mut table = Table::new();
     table.set_header(vec![
         "Run ID",
@@ -19,6 +130,7 @@ pub(super) fn format_runs_as_table(runs: &[RunDisplay]) -> String {
         "Status",
         "Retries",
         "Error Class",
+        "Error Reason",
     ]);
 
     for run_display in runs {
@@ -32,6 +144,11 @@ pub(super) fn format_runs_as_table(runs: &[RunDisplay]) -> String {
             "-".to_string()
         };
         let error_class = run.error_class.as_deref().unwrap_or("-");
+        let error_reason = run
+            .error_message
+            .as_ref()
+            .map(|msg| truncate_str(msg, 40))
+            .unwrap_or_else(|| "-".to_string());
 
         table.add_row(vec![
             Cell::new(&run.run_id[..8.min(run.run_id.len())]),
@@ -40,13 +157,22 @@ pub(super) fn format_runs_as_table(runs: &[RunDisplay]) -> String {
             Cell::new(status),
             Cell::new(retries),
             Cell::new(error_class),
+            Cell::new(error_reason),
         ]);
     }
 
     table.to_string()
 }
 
-pub(super) async fn resolve_game_category(
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
+    }
+}
+
+pub(crate) async fn resolve_game_category(
     ops: &SpeedrunOps,
     game_id: &str,
     category_id: &str,
@@ -62,7 +188,7 @@ pub(super) async fn resolve_game_category(
     (game_name, category_name)
 }
 
-pub(super) fn parse_status(s: &str) -> Result<RunStatus> {
+pub(crate) fn parse_status(s: &str) -> Result<RunStatus> {
     match s.to_lowercase().as_str() {
         "discovered" => Ok(RunStatus::Discovered),
         "processing" => Ok(RunStatus::Processing),
@@ -74,7 +200,7 @@ pub(super) fn parse_status(s: &str) -> Result<RunStatus> {
     }
 }
 
-pub(super) fn format_status(status: &RunStatus) -> String {
+pub(crate) fn format_status(status: &RunStatus) -> String {
     match status {
         RunStatus::Discovered => "discovered".to_string(),
         RunStatus::Processing => "processing".to_string(),
@@ -85,49 +211,11 @@ pub(super) fn format_status(status: &RunStatus) -> String {
     }
 }
 
-pub(super) fn parse_datetime(date_str: &str) -> Result<chrono::DateTime<chrono::Utc>> {
-    if let Ok(dt) = date_str.parse() {
-        return Ok(dt);
-    }
-
-    let with_time = format!("{}T00:00:00Z", date_str);
-    with_time.parse().context(
-        "Invalid date format. Expected ISO 8601 format (e.g., 2025-01-01T00:00:00Z or 2025-01-01)",
-    )
-}
-
-pub(super) fn group_and_display<F>(
-    error_runs: &[Run],
-    limit: u32,
-    title: &str,
-    unique_label: &str,
-    key_extractor: F,
-    display_group: impl Fn(&str, &[&Run]),
-) -> Result<()>
-where
-    F: Fn(&Run) -> String,
-{
-    use std::collections::HashMap;
-
-    let mut groups: HashMap<String, Vec<&Run>> = HashMap::new();
-    for run in error_runs {
-        groups.entry(key_extractor(run)).or_default().push(run);
-    }
-
-    let mut sorted_groups: Vec<_> = groups.iter().collect();
-    sorted_groups.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-
-    println!("{}", title);
-    println!("{}", "=".repeat(title.len()));
-    println!();
-    println!("Total {}: {}", unique_label, sorted_groups.len());
-    println!();
-
-    for (key, runs) in sorted_groups.iter().take(limit as usize) {
-        display_group(key, runs);
-    }
-
-    Ok(())
+pub(crate) fn parse_relative_duration(duration_str: &str) -> Result<chrono::DateTime<chrono::Utc>> {
+    let duration = humantime::parse_duration(duration_str)
+        .context("Invalid duration format. Examples: 30d, 1w, 2weeks, 1month, 1h30m")?;
+    let chrono_duration = chrono::Duration::from_std(duration).context("Duration too large")?;
+    Ok(Utc::now() - chrono_duration)
 }
 
 #[cfg(test)]
@@ -135,36 +223,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_datetime_full_format() {
-        let result = parse_datetime("2025-01-01T00:00:00Z");
+    fn test_parse_relative_duration_days() {
+        let result = parse_relative_duration("30d");
         assert!(result.is_ok());
         let dt = result.unwrap();
-        assert_eq!(dt.to_rfc3339(), "2025-01-01T00:00:00+00:00");
+        let diff = Utc::now() - dt;
+        assert!((diff.num_days() - 30).abs() <= 1);
     }
 
     #[test]
-    fn test_parse_datetime_date_only() {
-        let result = parse_datetime("2025-01-01");
+    fn test_parse_relative_duration_weeks() {
+        let result = parse_relative_duration("2weeks");
         assert!(result.is_ok());
         let dt = result.unwrap();
-        assert_eq!(dt.to_rfc3339(), "2025-01-01T00:00:00+00:00");
+        let diff = Utc::now() - dt;
+        assert!((diff.num_days() - 14).abs() <= 1);
     }
 
     #[test]
-    fn test_parse_datetime_with_timezone() {
-        let result = parse_datetime("2025-01-01T12:30:45+05:00");
+    fn test_parse_relative_duration_combined() {
+        let result = parse_relative_duration("1d12h");
         assert!(result.is_ok());
+        let dt = result.unwrap();
+        let diff = Utc::now() - dt;
+        assert!((diff.num_hours() - 36).abs() <= 1);
     }
 
     #[test]
-    fn test_parse_datetime_invalid_format() {
-        let result = parse_datetime("not-a-date");
+    fn test_parse_relative_duration_invalid() {
+        let result = parse_relative_duration("invalid");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid date format")
-        );
     }
 }

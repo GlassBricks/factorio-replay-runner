@@ -18,6 +18,7 @@ pub struct RunFilter {
     pub game_id: Option<String>,
     pub category_id: Option<String>,
     pub since_date: Option<DateTime<Utc>>,
+    pub before_date: Option<DateTime<Utc>>,
     pub limit: u32,
     pub offset: u32,
 }
