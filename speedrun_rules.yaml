@@ -8,13 +8,13 @@ games:
     categories:
       n2yzwgmk: {} # Any%
 
-      # 7kjwx64d: {} # Default Settings
+      7kjwx64d: {} # Default Settings
 
-      # xk97qv6d: # 100%
-      #   blueprint_import: true
+      xk97qv6d: # 100%
+        blueprint_import: true
 
-      # jdzmlwrk: # Random Seed New Game+
-      #   blueprint_import: true
+      jdzmlwrk: # Random Seed New Game+
+        blueprint_import: true
 
       z27jn1z2: # Any% MP
         max_players: 8
