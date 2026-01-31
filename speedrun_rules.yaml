@@ -6,20 +6,25 @@ games:
       - elevated-rails
       - space-age
     categories:
-      n2yzwgmk: {} # Any%
+      n2yzwgmk: # Any%
+        win_on_scenario_finished: true
 
-      7kjwx64d: {} # Default Settings
+      7kjwx64d: # Default Settings
+        win_on_scenario_finished: true
 
       xk97qv6d: # 100%
         blueprint_import: true
 
       jdzmlwrk: # Random Seed New Game+
+        win_on_scenario_finished: true
         blueprint_import: true
 
       z27jn1z2: # Any% MP
+        win_on_scenario_finished: true
         max_players: 8
 
       zdn96892: # Default Settings MP
+        win_on_scenario_finished: true
         max_players: 8
 
   9d35xw1l: # Factorio
