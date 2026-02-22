@@ -3,6 +3,7 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
+pub mod bot_notifier;
 pub mod config;
 pub mod database;
 pub mod poller;
@@ -11,6 +12,7 @@ pub mod retry;
 pub mod run_processing;
 pub mod speedrun_api;
 
+pub use bot_notifier::BotNotifier;
 pub use config::{DaemonConfig, SrcRunRules};
 pub use poller::{poll_speedrun_com, poll_speedrun_com_loop};
 pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
