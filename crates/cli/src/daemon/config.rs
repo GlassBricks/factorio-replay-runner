@@ -17,6 +17,19 @@ pub struct PollingConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct BotNotifierConfig {
+    pub bot_url: String,
+    pub auth_token: String,
+    #[serde(default = "default_retry_interval_seconds")]
+    pub retry_interval_seconds: u64,
+}
+
+fn default_retry_interval_seconds() -> u64 {
+    1800
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
     #[serde(default = "default_game_rules_file")]
     pub game_rules_file: PathBuf,
@@ -30,6 +43,8 @@ pub struct DaemonConfig {
     pub polling: PollingConfig,
     #[serde(default)]
     pub retry: RetryConfig,
+    #[serde(default)]
+    pub bot_notifier: Option<BotNotifierConfig>,
 }
 
 fn default_game_rules_file() -> PathBuf {
