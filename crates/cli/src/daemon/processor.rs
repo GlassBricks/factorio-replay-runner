@@ -163,7 +163,7 @@ mod tests {
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
         );
-        ctx.db.insert_run(new_run).await.unwrap();
+        ctx.db.insert_run(new_run, true).await.unwrap();
 
         let result = find_run_to_process(&ctx).await;
 
@@ -177,7 +177,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_logging", "game1", "cat1", submitted_date);
-        ctx.db.insert_run(new_run).await.unwrap();
+        ctx.db.insert_run(new_run, true).await.unwrap();
 
         let run = ctx.db.get_run("run_logging").await.unwrap().unwrap();
         assert_eq!(run.retry_count, 0);

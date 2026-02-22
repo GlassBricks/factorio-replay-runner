@@ -121,7 +121,7 @@ async fn poll_category(
     let discovered_count = new_runs.len();
 
     for new_run in &new_runs {
-        if let Err(e) = ctx.db.insert_run(new_run.clone()).await {
+        if let Err(e) = ctx.db.insert_run(new_run.clone(), true).await {
             error!("Failed to insert run into database: {:#}", e);
         }
     }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            SELECT run_id, game_id, category_id,\n                   submitted_date as \"submitted_date: chrono::DateTime<Utc>\",\n                   status as \"status: RunStatus\",\n                   error_message,\n                   retry_count as \"retry_count: u32\",\n                   next_retry_at as \"next_retry_at: chrono::DateTime<Utc>\",\n                   error_class,\n                   created_at as \"created_at: chrono::DateTime<Utc>\",\n                   updated_at as \"updated_at: chrono::DateTime<Utc>\"\n            FROM runs\n            WHERE run_id = ?\n            ",
+  "query": "\n            SELECT run_id, game_id, category_id,\n                   submitted_date as \"submitted_date: chrono::DateTime<Utc>\",\n                   status as \"status: RunStatus\",\n                   error_message,\n                   retry_count as \"retry_count: u32\",\n                   next_retry_at as \"next_retry_at: chrono::DateTime<Utc>\",\n                   error_class,\n                   created_at as \"created_at: chrono::DateTime<Utc>\",\n                   updated_at as \"updated_at: chrono::DateTime<Utc>\",\n                   bot_notified as \"bot_notified: bool\"\n            FROM runs\n            WHERE run_id = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,11 @@
         "name": "updated_at: chrono::DateTime<Utc>",
         "ordinal": 10,
         "type_info": "Text"
+      },
+      {
+        "name": "bot_notified: bool",
+        "ordinal": 11,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -73,8 +78,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "3a2c117c20e876d2f205bf54e927f4a9549468e6ed61ca48cf555520882c937f"
+  "hash": "9a2642abc7270433e04c6deea2412dea841545f1032fcb0191106cd61c3c1e41"
 }

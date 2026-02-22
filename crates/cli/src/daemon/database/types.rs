@@ -39,6 +39,7 @@ pub struct Run {
     pub error_class: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub bot_notified: bool,
 }
 
 #[derive(Debug, Clone)]

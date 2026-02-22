@@ -11,7 +11,7 @@ use crate::error::RunProcessingError;
 use crate::run_replay::ReplayReport;
 
 impl Database {
-    pub async fn insert_run(&self, new_run: NewRun) -> Result<()> {
+    pub async fn insert_run(&self, new_run: NewRun, bot_notified: bool) -> Result<()> {
         let now = Utc::now();
         let status = RunStatus::Discovered;
         let retry_count: u32 = 0;
@@ -21,8 +21,8 @@ impl Database {
             INSERT INTO runs (
                 run_id, game_id, category_id, submitted_date,
                 status, error_message, retry_count, next_retry_at, error_class,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?)
+                created_at, updated_at, bot_notified
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?)
             "#,
             new_run.run_id,
             new_run.game_id,
@@ -31,12 +31,56 @@ impl Database {
             status,
             retry_count,
             now,
-            now
+            now,
+            bot_notified
         )
         .execute(self.pool())
         .await?;
 
         Ok(())
+    }
+
+    pub async fn set_bot_notified(&self, run_id: &str, notified: bool) -> Result<()> {
+        let now = Utc::now();
+
+        sqlx::query!(
+            r#"
+            UPDATE runs
+            SET bot_notified = ?, updated_at = ?
+            WHERE run_id = ?
+            "#,
+            notified,
+            now,
+            run_id
+        )
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_unnotified_runs(&self) -> Result<Vec<Run>> {
+        let runs = sqlx::query_as!(
+            Run,
+            r#"
+            SELECT run_id, game_id, category_id,
+                   submitted_date as "submitted_date: chrono::DateTime<Utc>",
+                   status as "status: RunStatus",
+                   error_message,
+                   retry_count as "retry_count: u32",
+                   next_retry_at as "next_retry_at: chrono::DateTime<Utc>",
+                   error_class,
+                   created_at as "created_at: chrono::DateTime<Utc>",
+                   updated_at as "updated_at: chrono::DateTime<Utc>",
+                   bot_notified as "bot_notified: bool"
+            FROM runs
+            WHERE bot_notified = false
+            "#
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(runs)
     }
 
     pub async fn update_run_status(
@@ -168,7 +212,8 @@ impl Database {
                    next_retry_at as "next_retry_at: chrono::DateTime<Utc>",
                    error_class,
                    created_at as "created_at: chrono::DateTime<Utc>",
-                   updated_at as "updated_at: chrono::DateTime<Utc>"
+                   updated_at as "updated_at: chrono::DateTime<Utc>",
+                   bot_notified as "bot_notified: bool"
             FROM runs
             WHERE run_id = ?
             "#,
@@ -195,7 +240,7 @@ impl Database {
     }
 
     pub async fn query_runs(&self, filter: RunFilter) -> Result<Vec<Run>> {
-        let mut query_parts = vec!["SELECT run_id, game_id, category_id, submitted_date, status, error_message, retry_count, next_retry_at, error_class, created_at, updated_at FROM runs WHERE 1=1".to_string()];
+        let mut query_parts = vec!["SELECT run_id, game_id, category_id, submitted_date, status, error_message, retry_count, next_retry_at, error_class, created_at, updated_at, bot_notified FROM runs WHERE 1=1".to_string()];
         let mut conditions = Vec::new();
 
         if filter.status.is_some() {
@@ -279,6 +324,7 @@ impl Database {
                     error_class: r.try_get("error_class")?,
                     created_at: r.try_get("created_at")?,
                     updated_at: r.try_get("updated_at")?,
+                    bot_notified: r.try_get("bot_notified")?,
                 })
             })
             .collect::<Result<Vec<_>, _>>()
@@ -307,7 +353,7 @@ impl Database {
             r#"
             SELECT run_id, game_id, category_id, submitted_date, status,
                    error_message, retry_count, next_retry_at, error_class,
-                   created_at, updated_at
+                   created_at, updated_at, bot_notified
             FROM runs
             WHERE (
                 (status = ? AND ({}))
@@ -364,6 +410,7 @@ impl Database {
                 error_class: r.try_get("error_class")?,
                 created_at: r.try_get("created_at")?,
                 updated_at: r.try_get("updated_at")?,
+                bot_notified: r.try_get("bot_notified")?,
             })
         })
         .transpose()
@@ -555,7 +602,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
 
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let run = db.get_run("run123").await.unwrap().unwrap();
         assert_eq!(run.run_id, "run123");
@@ -573,7 +620,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_processing("run123").await.unwrap();
         let run = db.get_run("run123").await.unwrap().unwrap();
@@ -593,7 +640,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -601,7 +648,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -609,7 +656,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -637,7 +684,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -645,7 +692,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -653,7 +700,7 @@ mod tests {
             "game_id_1",
             "cat_id_1",
             "2024-01-05T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -679,7 +726,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_retry_test", "game1", "cat1", submitted_date);
 
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let run = db.get_run("run_retry_test").await.unwrap().unwrap();
         assert_eq!(run.retry_count, 0);
@@ -694,7 +741,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_persist_test", "game1", "cat1", submitted_date);
 
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_processing("run_persist_test").await.unwrap();
         let run = db.get_run("run_persist_test").await.unwrap().unwrap();
@@ -715,7 +762,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_schedule", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_error("run_schedule", "test error")
             .await
@@ -739,7 +786,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_permanent", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_error("run_permanent", "test error")
             .await
@@ -765,7 +812,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_clear", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_error("run_clear", "test error").await.unwrap();
 
@@ -789,10 +836,10 @@ mod tests {
         let old_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_date = "2024-01-05T00:00:00Z".parse().unwrap();
 
-        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date))
+        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date), true)
             .await
             .unwrap();
-        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date))
+        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date), true)
             .await
             .unwrap();
 
@@ -816,10 +863,10 @@ mod tests {
         let old_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_date = "2024-01-05T00:00:00Z".parse().unwrap();
 
-        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date))
+        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date), true)
             .await
             .unwrap();
-        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date))
+        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date), true)
             .await
             .unwrap();
 
@@ -845,7 +892,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -853,7 +900,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -861,7 +908,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-04T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -888,7 +935,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -897,7 +944,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-05T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.mark_run_processing("run_processing_new").await.unwrap();
@@ -907,7 +954,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.mark_run_error("run_error_ready", "test error")
@@ -946,7 +993,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_retry_result", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Retryable,
@@ -974,7 +1021,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_final", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Final,
@@ -1002,7 +1049,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_success_clear", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         db.mark_run_error("run_success_clear", "test error")
             .await
@@ -1039,7 +1086,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_e2e", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Retryable,
@@ -1093,7 +1140,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_max_attempts", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let config = RetryConfig::default();
         let max_attempts = config.max_attempts;
@@ -1142,7 +1189,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_rate_limited", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let retry_after = Duration::from_secs(300);
         let error = RunProcessingError {
@@ -1178,7 +1225,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1186,7 +1233,7 @@ mod tests {
             "game1",
             "cat2",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1194,7 +1241,7 @@ mod tests {
             "game2",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1218,7 +1265,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1226,7 +1273,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1251,7 +1298,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1259,7 +1306,7 @@ mod tests {
             "game1",
             "cat2",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1267,7 +1314,7 @@ mod tests {
             "game2",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1292,7 +1339,7 @@ mod tests {
                 "game1",
                 "cat1",
                 format!("2024-01-0{}T00:00:00Z", i).parse().unwrap(),
-            ))
+            ), true)
             .await
             .unwrap();
         }
@@ -1317,7 +1364,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1325,7 +1372,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1333,7 +1380,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1356,7 +1403,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1364,7 +1411,7 @@ mod tests {
             "game1",
             "cat2",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1372,7 +1419,7 @@ mod tests {
             "game2",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1410,7 +1457,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_persist", "game1", "cat1", submitted_date);
-        db.insert_run(new_run).await.unwrap();
+        db.insert_run(new_run, true).await.unwrap();
 
         let next_retry_at = "2024-01-02T00:00:00Z".parse().unwrap();
         db.mark_run_error("run_persist", "test error")
@@ -1446,7 +1493,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1454,7 +1501,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-15T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1462,7 +1509,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-02-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1487,7 +1534,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1495,7 +1542,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-15T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1503,7 +1550,7 @@ mod tests {
             "game1",
             "cat2",
             "2024-01-20T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1530,7 +1577,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1538,7 +1585,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-05T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1546,7 +1593,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-10T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1572,7 +1619,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1580,7 +1627,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-05T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1588,7 +1635,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-10T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1613,7 +1660,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1621,7 +1668,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1629,7 +1676,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1673,7 +1720,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1681,7 +1728,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 
@@ -1720,7 +1767,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1728,7 +1775,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-02T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
         db.insert_run(NewRun::new(
@@ -1736,7 +1783,7 @@ mod tests {
             "game1",
             "cat1",
             "2024-01-03T00:00:00Z".parse().unwrap(),
-        ))
+        ), true)
         .await
         .unwrap();
 

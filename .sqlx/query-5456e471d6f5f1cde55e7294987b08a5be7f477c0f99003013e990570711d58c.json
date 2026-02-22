@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT run_id, game_id, category_id,\n                   submitted_date as \"submitted_date: chrono::DateTime<Utc>\",\n                   status as \"status: RunStatus\",\n                   error_message,\n                   retry_count as \"retry_count: u32\",\n                   next_retry_at as \"next_retry_at: chrono::DateTime<Utc>\",\n                   error_class,\n                   created_at as \"created_at: chrono::DateTime<Utc>\",\n                   updated_at as \"updated_at: chrono::DateTime<Utc>\",\n                   bot_notified as \"bot_notified: bool\"\n            FROM runs\n            WHERE bot_notified = false\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "submitted_date: chrono::DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "status: RunStatus",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "retry_count: u32",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "next_retry_at: chrono::DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_class",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at: chrono::DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: chrono::DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "bot_notified: bool",
+        "ordinal": 11,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5456e471d6f5f1cde55e7294987b08a5be7f477c0f99003013e990570711d58c"
+}
