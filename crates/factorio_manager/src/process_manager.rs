@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
@@ -52,9 +52,7 @@ impl Default for ProcessManager {
     }
 }
 
-lazy_static! {
-    pub static ref GLOBAL_PROCESS_MANAGER: ProcessManager = ProcessManager::new();
-}
+pub static GLOBAL_PROCESS_MANAGER: LazyLock<ProcessManager> = LazyLock::new(ProcessManager::new);
 
 #[cfg(test)]
 mod tests {

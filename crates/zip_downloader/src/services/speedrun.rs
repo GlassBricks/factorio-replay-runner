@@ -2,8 +2,8 @@ use crate::DownloadError;
 use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
-use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::LazyLock;
 use std::{path::Path, process::Command};
 
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -34,12 +34,10 @@ fn create_curl_command(url: &str) -> Command {
     cmd
 }
 
-lazy_static! {
-    static ref SPEEDRUN_URL_PATTERN: Regex = Regex::new(
-        r"https://(?:www\.)?speedrun\.com/static/resource/[a-zA-Z0-9]+\.zip(?:\?[^\s#]*)?"
-    )
-    .unwrap();
-}
+static SPEEDRUN_URL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"https://(?:www\.)?speedrun\.com/static/resource/[a-zA-Z0-9]+\.zip(?:\?[^\s#]*)?")
+        .unwrap()
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpeedrunFileId(String);

@@ -3,16 +3,16 @@ use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
 use futures::StreamExt;
-use lazy_static::lazy_static;
 use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
 
-lazy_static! {
-    static ref DROPBOX_URL_PATTERNS: [Regex; 2] = [
+static DROPBOX_URL_PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+    [
         Regex::new(r"https://(?:www\.)?dropbox\.com/scl/fi/[^/]+/[^?\s]+(?:\?[^\s#]*)?").unwrap(),
         Regex::new(r"https://(?:www\.)?dropbox\.com/s/[^/]+/[^?\s]+(?:\?[^\s#]*)?").unwrap(),
-    ];
-}
+    ]
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropboxFileId(String);

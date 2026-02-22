@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
-use lazy_static::lazy_static;
 use regex::Regex;
 use std::io::Read;
+use std::sync::LazyLock;
 use std::{fs::File, path::Path};
 
 #[derive(Debug, Clone)]
@@ -132,9 +132,7 @@ pub fn validate_file_info(
     Ok(())
 }
 
-lazy_static! {
-    static ref INVALID_FILE_NAME_REGEX: Regex = Regex::new(r"[/\\]").unwrap();
-}
+static INVALID_FILE_NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[/\\]").unwrap());
 
 fn validate_file_name(file_name: &str) -> Result<()> {
     ensure!(

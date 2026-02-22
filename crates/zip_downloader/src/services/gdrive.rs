@@ -3,9 +3,9 @@ use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
 use futures::StreamExt;
-use lazy_static::lazy_static;
 use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
 use tokio::io::AsyncWriteExt as _;
 
 fn public_download_url(file_id: &str) -> String {
@@ -116,12 +116,12 @@ async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), Downl
     Ok(())
 }
 
-lazy_static! {
-    static ref GOOGLE_DRIVE_URL_PATTERNS: [Regex; 2] = [
+static GOOGLE_DRIVE_URL_PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+    [
         Regex::new(r"https://drive\.google\.com/file/d/([a-zA-Z0-9_-]+)").unwrap(),
         Regex::new(r"https://drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)").unwrap(),
-    ];
-}
+    ]
+});
 
 pub struct GoogleDriveService;
 
