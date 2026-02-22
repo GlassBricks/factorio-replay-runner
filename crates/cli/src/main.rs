@@ -213,7 +213,7 @@ async fn run_src(
 
     let new_run =
         daemon::database::types::NewRun::new(&run_id, run.game, run.category, submitted_date);
-    db.insert_run(new_run, true)
+    db.insert_run(new_run)
         .await
         .or_else(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {

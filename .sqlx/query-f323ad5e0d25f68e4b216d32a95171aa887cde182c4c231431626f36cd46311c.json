@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE runs\n            SET bot_notified = ?, updated_at = ?\n            WHERE run_id = ? AND status = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f323ad5e0d25f68e4b216d32a95171aa887cde182c4c231431626f36cd46311c"
+}

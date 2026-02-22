@@ -120,18 +120,11 @@ async fn poll_category(
 
     let discovered_count = new_runs.len();
 
-    let notifier_configured = ctx.bot_notifier.is_some();
     for new_run in &new_runs {
-        match ctx
-            .db
-            .insert_run(new_run.clone(), !notifier_configured)
-            .await
-        {
+        match ctx.db.insert_run(new_run.clone()).await {
             Ok(()) => {
                 if let Some(notifier) = &ctx.bot_notifier {
-                    notifier
-                        .report_status(&new_run.run_id, "pending", None)
-                        .await;
+                    notifier.notify(new_run.run_id.clone());
                 }
             }
             Err(e) => {

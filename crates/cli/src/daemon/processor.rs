@@ -65,7 +65,7 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .context("Failed to mark run as processing")?;
 
     if let Some(notifier) = &ctx.bot_notifier {
-        notifier.report_status(&run.run_id, "running", None).await;
+        notifier.notify(run.run_id.clone());
     }
 
     let game_category = ctx
@@ -117,17 +117,8 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .process_replay_result(&run.run_id, result, &ctx.retry_config)
         .await?;
 
-    if let (Some(notifier), Ok(Some(updated_run))) =
-        (&ctx.bot_notifier, ctx.db.get_run(&run.run_id).await)
-    {
-        let bot_status = crate::daemon::bot_notifier::run_status_to_bot_status(&updated_run.status);
-        notifier
-            .report_status(
-                &run.run_id,
-                bot_status,
-                updated_run.error_message.as_deref(),
-            )
-            .await;
+    if let Some(notifier) = &ctx.bot_notifier {
+        notifier.notify(run.run_id.clone());
     }
 
     info!("Run {} finished successfully", run.run_id);
@@ -182,7 +173,7 @@ mod tests {
             "cat1",
             "2024-01-01T00:00:00Z".parse().unwrap(),
         );
-        ctx.db.insert_run(new_run, true).await.unwrap();
+        ctx.db.insert_run(new_run).await.unwrap();
 
         let result = find_run_to_process(&ctx).await;
 
@@ -196,7 +187,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_logging", "game1", "cat1", submitted_date);
-        ctx.db.insert_run(new_run, true).await.unwrap();
+        ctx.db.insert_run(new_run).await.unwrap();
 
         let run = ctx.db.get_run("run_logging").await.unwrap().unwrap();
         assert_eq!(run.retry_count, 0);

@@ -11,10 +11,11 @@ use crate::error::RunProcessingError;
 use crate::run_replay::ReplayReport;
 
 impl Database {
-    pub async fn insert_run(&self, new_run: NewRun, bot_notified: bool) -> Result<()> {
+    pub async fn insert_run(&self, new_run: NewRun) -> Result<()> {
         let now = Utc::now();
         let status = RunStatus::Discovered;
         let retry_count: u32 = 0;
+        let bot_notified = false;
 
         sqlx::query!(
             r#"
@@ -40,6 +41,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn set_bot_notified(&self, run_id: &str, notified: bool) -> Result<()> {
         let now = Utc::now();
 
@@ -83,6 +85,31 @@ impl Database {
         Ok(runs)
     }
 
+    pub async fn set_bot_notified_if_status(
+        &self,
+        run_id: &str,
+        notified: bool,
+        expected_status: &RunStatus,
+    ) -> Result<bool> {
+        let now = Utc::now();
+
+        let result = sqlx::query!(
+            r#"
+            UPDATE runs
+            SET bot_notified = ?, updated_at = ?
+            WHERE run_id = ? AND status = ?
+            "#,
+            notified,
+            now,
+            run_id,
+            expected_status
+        )
+        .execute(self.pool())
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn update_run_status(
         &self,
         run_id: &str,
@@ -94,7 +121,7 @@ impl Database {
         sqlx::query!(
             r#"
             UPDATE runs
-            SET status = ?, error_message = ?, updated_at = ?
+            SET status = ?, error_message = ?, bot_notified = false, updated_at = ?
             WHERE run_id = ?
             "#,
             status,
@@ -602,7 +629,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
 
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let run = db.get_run("run123").await.unwrap().unwrap();
         assert_eq!(run.run_id, "run123");
@@ -620,7 +647,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run123", "game_id_1", "cat_id_1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_processing("run123").await.unwrap();
         let run = db.get_run("run123").await.unwrap().unwrap();
@@ -635,37 +662,28 @@ mod tests {
     async fn test_get_next_run_to_process() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -688,37 +706,28 @@ mod tests {
             .unwrap();
         assert_eq!(latest, None);
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game_id_1",
-                "cat_id_1",
-                "2024-01-05T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -744,7 +753,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_retry_test", "game1", "cat1", submitted_date);
 
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let run = db.get_run("run_retry_test").await.unwrap().unwrap();
         assert_eq!(run.retry_count, 0);
@@ -759,7 +768,7 @@ mod tests {
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_persist_test", "game1", "cat1", submitted_date);
 
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_processing("run_persist_test").await.unwrap();
         let run = db.get_run("run_persist_test").await.unwrap().unwrap();
@@ -780,7 +789,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_schedule", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_error("run_schedule", "test error")
             .await
@@ -804,7 +813,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_permanent", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_error("run_permanent", "test error")
             .await
@@ -830,7 +839,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_clear", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_error("run_clear", "test error").await.unwrap();
 
@@ -854,10 +863,10 @@ mod tests {
         let old_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_date = "2024-01-05T00:00:00Z".parse().unwrap();
 
-        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date), true)
+        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date))
             .await
             .unwrap();
-        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date), true)
+        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date))
             .await
             .unwrap();
 
@@ -881,10 +890,10 @@ mod tests {
         let old_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_date = "2024-01-05T00:00:00Z".parse().unwrap();
 
-        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date), true)
+        db.insert_run(NewRun::new("run_old", "game1", "cat1", old_date))
             .await
             .unwrap();
-        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date), true)
+        db.insert_run(NewRun::new("run_new", "game1", "cat1", new_date))
             .await
             .unwrap();
 
@@ -905,37 +914,28 @@ mod tests {
     async fn test_get_next_run_to_process_ordering() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run_2024_01_03",
-                "game1",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_2024_01_03",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run_2024_01_01",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_2024_01_01",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run_2024_01_04",
-                "game1",
-                "cat1",
-                "2024-01-04T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_2024_01_04",
+            "game1",
+            "cat1",
+            "2024-01-04T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -957,40 +957,31 @@ mod tests {
     async fn test_get_next_run_to_process_prioritizes_processing_runs() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run_discovered_old",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_discovered_old",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run_processing_new",
-                "game1",
-                "cat1",
-                "2024-01-05T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_processing_new",
+            "game1",
+            "cat1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
         db.mark_run_processing("run_processing_new").await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run_error_ready",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_error_ready",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
         db.mark_run_error("run_error_ready", "test error")
@@ -1029,7 +1020,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_retry_result", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Retryable,
@@ -1057,7 +1048,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_final", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Final,
@@ -1085,7 +1076,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_success_clear", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         db.mark_run_error("run_success_clear", "test error")
             .await
@@ -1122,7 +1113,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_e2e", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let error = RunProcessingError {
             class: ErrorClass::Retryable,
@@ -1176,7 +1167,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_max_attempts", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let config = RetryConfig::default();
         let max_attempts = config.max_attempts;
@@ -1225,7 +1216,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_rate_limited", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let retry_after = Duration::from_secs(300);
         let error = RunProcessingError {
@@ -1256,37 +1247,28 @@ mod tests {
     async fn test_query_runs_basic() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat2",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game2",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1305,26 +1287,20 @@ mod tests {
     async fn test_query_runs_with_status_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1344,37 +1320,28 @@ mod tests {
     async fn test_query_runs_with_game_category_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat2",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game2",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1394,15 +1361,12 @@ mod tests {
         let db = Database::in_memory().await.unwrap();
 
         for i in 1..=5 {
-            db.insert_run(
-                NewRun::new(
-                    format!("run{}", i),
-                    "game1",
-                    "cat1",
-                    format!("2024-01-0{}T00:00:00Z", i).parse().unwrap(),
-                ),
-                true,
-            )
+            db.insert_run(NewRun::new(
+                format!("run{}", i),
+                "game1",
+                "cat1",
+                format!("2024-01-0{}T00:00:00Z", i).parse().unwrap(),
+            ))
             .await
             .unwrap();
         }
@@ -1422,37 +1386,28 @@ mod tests {
     async fn test_count_runs_by_status() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1470,37 +1425,28 @@ mod tests {
     async fn test_get_next_run_to_process_category_filtering() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run_cat1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_cat1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run_cat2",
-                "game1",
-                "cat2",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_cat2",
+            "game1",
+            "cat2",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run_game2_cat1",
-                "game2",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run_game2_cat1",
+            "game2",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1538,7 +1484,7 @@ mod tests {
 
         let submitted_date = "2024-01-01T00:00:00Z".parse().unwrap();
         let new_run = NewRun::new("run_persist", "game1", "cat1", submitted_date);
-        db.insert_run(new_run, true).await.unwrap();
+        db.insert_run(new_run).await.unwrap();
 
         let next_retry_at = "2024-01-02T00:00:00Z".parse().unwrap();
         db.mark_run_error("run_persist", "test error")
@@ -1569,37 +1515,28 @@ mod tests {
     async fn test_query_runs_with_since_date_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-15T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-15T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-02-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-02-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1619,37 +1556,28 @@ mod tests {
     async fn test_query_runs_with_since_date_and_other_filters() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-15T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-15T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat2",
-                "2024-01-20T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat2",
+            "2024-01-20T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1671,37 +1599,28 @@ mod tests {
     async fn test_query_runs_with_before_date_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-05T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-01-10T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-10T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1722,37 +1641,28 @@ mod tests {
     async fn test_query_runs_with_date_range() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-05T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-01-10T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-10T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1772,37 +1682,28 @@ mod tests {
     async fn test_query_runs_with_error_class_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1841,26 +1742,20 @@ mod tests {
     async fn test_query_runs_with_error_reason_filter() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
@@ -1894,37 +1789,28 @@ mod tests {
     async fn test_delete_runs() {
         let db = Database::in_memory().await.unwrap();
 
-        db.insert_run(
-            NewRun::new(
-                "run1",
-                "game1",
-                "cat1",
-                "2024-01-01T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run1",
+            "game1",
+            "cat1",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run2",
-                "game1",
-                "cat1",
-                "2024-01-02T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run2",
+            "game1",
+            "cat1",
+            "2024-01-02T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
-        db.insert_run(
-            NewRun::new(
-                "run3",
-                "game1",
-                "cat1",
-                "2024-01-03T00:00:00Z".parse().unwrap(),
-            ),
-            true,
-        )
+        db.insert_run(NewRun::new(
+            "run3",
+            "game1",
+            "cat1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
         .await
         .unwrap();
 
