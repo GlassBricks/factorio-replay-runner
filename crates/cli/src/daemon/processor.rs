@@ -64,6 +64,10 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         .await
         .context("Failed to mark run as processing")?;
 
+    if let Some(notifier) = &ctx.bot_notifier {
+        notifier.report_status(&run.run_id, "running", None).await;
+    }
+
     let game_category = ctx
         .speedrun_ops
         .format_game_category(&run.game_id, &run.category_id)
@@ -112,6 +116,20 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
     ctx.db
         .process_replay_result(&run.run_id, result, &ctx.retry_config)
         .await?;
+
+    if let (Some(notifier), Ok(Some(updated_run))) =
+        (&ctx.bot_notifier, ctx.db.get_run(&run.run_id).await)
+    {
+        let bot_status = crate::daemon::bot_notifier::run_status_to_bot_status(&updated_run.status);
+        notifier
+            .report_status(
+                &run.run_id,
+                bot_status,
+                updated_run.error_message.as_deref(),
+            )
+            .await;
+    }
+
     info!("Run {} finished successfully", run.run_id);
     Ok(())
 }
@@ -141,6 +159,7 @@ mod tests {
             install_dir: PathBuf::from("/tmp/test"),
             output_dir: PathBuf::from("/tmp/test_output"),
             retry_config: RetryConfig::default(),
+            bot_notifier: None,
         }
     }
 

@@ -120,9 +120,23 @@ async fn poll_category(
 
     let discovered_count = new_runs.len();
 
+    let notifier_configured = ctx.bot_notifier.is_some();
     for new_run in &new_runs {
-        if let Err(e) = ctx.db.insert_run(new_run.clone(), true).await {
-            error!("Failed to insert run into database: {:#}", e);
+        match ctx
+            .db
+            .insert_run(new_run.clone(), !notifier_configured)
+            .await
+        {
+            Ok(()) => {
+                if let Some(notifier) = &ctx.bot_notifier {
+                    notifier
+                        .report_status(&new_run.run_id, "pending", None)
+                        .await;
+                }
+            }
+            Err(e) => {
+                error!("Failed to insert run into database: {:#}", e);
+            }
         }
     }
 
@@ -165,6 +179,7 @@ mod tests {
             install_dir: PathBuf::from("./factorio_installs"),
             output_dir: PathBuf::from("./daemon_runs"),
             retry_config: RetryConfig::default(),
+            bot_notifier: None,
         }
     }
 

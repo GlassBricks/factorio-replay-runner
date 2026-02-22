@@ -269,6 +269,7 @@ async fn run_src_once(
         install_dir: install_dir.to_path_buf(),
         output_dir: output_dir.to_path_buf(),
         retry_config: daemon_config.retry.clone(),
+        bot_notifier: None,
     };
 
     info!("Polling speedrun.com for new runs");

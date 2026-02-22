@@ -6,12 +6,14 @@ use factorio_manager::save_file::{SaveFile, WrittenSaveFile};
 use log::info;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use zip_downloader::FileDownloader;
 use zip_downloader::services::dropbox::DropboxService;
 use zip_downloader::services::gdrive::GoogleDriveService;
 use zip_downloader::services::speedrun::SpeedrunService;
 
 use crate::config::RunRules;
+use crate::daemon::bot_notifier::BotNotifier;
 use crate::daemon::config::SrcRunRules;
 use crate::daemon::database::connection::Database;
 use crate::daemon::retry::RetryConfig;
@@ -30,6 +32,7 @@ pub struct RunProcessingContext {
     pub install_dir: PathBuf,
     pub output_dir: PathBuf,
     pub retry_config: RetryConfig,
+    pub bot_notifier: Option<Arc<BotNotifier>>,
 }
 
 pub struct RunProcessor<'a> {
