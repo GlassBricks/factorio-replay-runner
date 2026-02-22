@@ -30,3 +30,4 @@ zip_downloader = { path = "../zip_downloader" }
 
 [dev-dependencies]
 test-utils = { path = "../test-utils" }
+wiremock = { workspace = true }

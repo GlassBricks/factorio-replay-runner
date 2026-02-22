@@ -16,7 +16,6 @@ futures = { version = "0.3.31", features = ["compat"] }
 glob = "0.3"
 humantime = "2.1"
 itertools = "0.14.0"
-lazy_static = "1.5.0"
 libc = "0.2.175"
 log = "0.4.27"
 regex = "1.11.1"
@@ -31,4 +30,5 @@ thiserror = "2.0.12"
 tokio = { version = "1.47.0", features = ["macros", "rt", "rt-multi-thread", "signal", "time", "fs", "sync"] }
 tokio-util = { version = "0.7.16", features = ["compat"] }
 yup-oauth2 = "12.1.0"
+wiremock = "0.6"
 zip = {version= "4.3.0", features=["deflate"]}
