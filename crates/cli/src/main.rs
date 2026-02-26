@@ -3,9 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use config::RunRules;
 use factorio_manager::{
     factorio_install_dir::FactorioInstallDir,
-    process_manager::GLOBAL_PROCESS_MANAGER,
     save_file::{SaveFile, WrittenSaveFile},
-    shutdown::ShutdownCoordinator,
 };
 use log::info;
 use run_replay::{ReplayReport, run_replay};
@@ -14,6 +12,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use tokio::signal;
+use tokio::signal::unix::SignalKind;
+use tokio_util::sync::CancellationToken;
 
 use crate::daemon::{RunProcessingContext, SrcRunRules, download_and_run_replay};
 
@@ -100,19 +101,26 @@ struct DaemonArgs {
 async fn main() -> Result<()> {
     init_logger();
 
+    let token = setup_signal_handler()?;
     let args = CliArgs::parse();
 
     match args.command {
         Commands::Run(sub_args) => {
-            let exit_code = cli_run_file(sub_args).await?;
+            let exit_code = tokio::select! {
+                result = cli_run_file(sub_args) => result?,
+                _ = token.cancelled() => { log::info!("Interrupted"); 130 }
+            };
             std::process::exit(exit_code);
         }
         Commands::RunSrc(sub_args) => {
-            let exit_code = cli_run_src(sub_args).await?;
+            let exit_code = tokio::select! {
+                result = cli_run_src(sub_args) => result?,
+                _ = token.cancelled() => { log::info!("Interrupted"); 130 }
+            };
             std::process::exit(exit_code);
         }
         Commands::Daemon(sub_args) => {
-            cli_daemon(sub_args).await?;
+            cli_daemon(sub_args, token).await?;
             Ok(())
         }
         Commands::Query(sub_args) => {
@@ -124,6 +132,22 @@ async fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn setup_signal_handler() -> Result<CancellationToken> {
+    let token = CancellationToken::new();
+    let cloned = token.clone();
+    tokio::spawn(async move {
+        let mut sigint = signal::unix::signal(SignalKind::interrupt())?;
+        let mut sigterm = signal::unix::signal(SignalKind::terminate())?;
+        tokio::select! {
+            _ = sigint.recv() => log::info!("Received SIGINT, shutting down..."),
+            _ = sigterm.recv() => log::info!("Received SIGTERM, shutting down..."),
+        }
+        cloned.cancel();
+        Ok::<(), std::io::Error>(())
+    });
+    Ok(token)
 }
 
 fn init_logger() {
@@ -289,16 +313,13 @@ async fn run_src_once(
     }
 }
 
-async fn cli_daemon(args: DaemonArgs) -> Result<i32> {
+async fn cli_daemon(args: DaemonArgs, token: CancellationToken) -> Result<i32> {
     let DaemonArgs { config } = args;
 
     let daemon_config = load_daemon_config(&config).await?;
     let src_rules = load_src_rules(&daemon_config.game_rules_file).await?;
 
-    let coordinator = ShutdownCoordinator::new(Arc::new((*GLOBAL_PROCESS_MANAGER).clone()));
-    coordinator.setup_handlers()?;
-
-    daemon::run_daemon(daemon_config, src_rules).await?;
+    daemon::run_daemon(daemon_config, src_rules, token).await?;
     Ok(0)
 }
 

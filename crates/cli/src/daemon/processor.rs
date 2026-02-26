@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 use super::database::types::Run;
 use super::run_processing::{RunProcessingContext, download_and_run_replay};
@@ -12,19 +13,41 @@ pub enum ProcessResult {
     NoWork,
 }
 
-pub async fn process_runs_loop(ctx: RunProcessingContext, work_notify: Arc<Notify>) -> Result<()> {
+pub async fn process_runs_loop(
+    ctx: RunProcessingContext,
+    work_notify: Arc<Notify>,
+    token: CancellationToken,
+) -> Result<()> {
     info!("Starting run processor");
 
     loop {
-        match find_run_to_process(&ctx).await {
-            Ok(ProcessResult::Processed) => {}
+        let result = tokio::select! {
+            _ = token.cancelled() => {
+                info!("Processor shutting down");
+                return Ok(());
+            }
+            result = find_run_to_process(&ctx) => result,
+        };
+
+        match result {
+            Ok(ProcessResult::Processed) => {
+                continue;
+            }
             Err(e) => {
                 error!("Run processing iteration failed: {:#}", e);
+                continue;
             }
             Ok(ProcessResult::NoWork) => {
                 info!("No more runs available - sleeping");
-                work_notify.notified().await;
             }
+        }
+
+        tokio::select! {
+            _ = token.cancelled() => {
+                info!("Processor shutting down");
+                return Ok(());
+            }
+            _ = work_notify.notified() => {}
         }
     }
 }

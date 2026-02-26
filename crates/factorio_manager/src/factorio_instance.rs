@@ -1,5 +1,4 @@
 use crate::error::FactorioError;
-use crate::process_manager::GLOBAL_PROCESS_MANAGER;
 use crate::save_file::SaveFile;
 use async_process::{Child, Command};
 use futures::io::{AsyncReadExt, BufReader};
@@ -94,7 +93,6 @@ pub struct FactorioProcess {
 
 impl FactorioProcess {
     pub fn new(child: Child) -> Self {
-        GLOBAL_PROCESS_MANAGER.register(child.id());
         FactorioProcess { child }
     }
 
@@ -136,9 +134,8 @@ impl FactorioProcess {
 
 impl Drop for FactorioProcess {
     fn drop(&mut self) {
-        let pid = self.child.id();
+        self.terminate();
         self.child.kill().ok();
-        GLOBAL_PROCESS_MANAGER.unregister(pid);
     }
 }
 

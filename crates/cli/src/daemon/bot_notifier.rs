@@ -3,6 +3,7 @@ use log::{info, warn};
 use reqwest::Client;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use super::config::BotNotifierConfig;
 
@@ -28,7 +29,8 @@ pub async fn run_bot_notifier_actor(
     mut rx: mpsc::Receiver<String>,
     db: Database,
     config: BotNotifierConfig,
-) {
+    token: CancellationToken,
+) -> Result<(), anyhow::Error> {
     let client = Client::new();
     let mut retry_interval =
         tokio::time::interval(Duration::from_secs(config.retry_interval_seconds));
@@ -41,6 +43,10 @@ pub async fn run_bot_notifier_actor(
             }
             _ = retry_interval.tick() => {
                 retry_unnotified(&db, &client, &config).await;
+            }
+            _ = token.cancelled() => {
+                info!("Bot notifier shutting down");
+                return Ok(());
             }
         }
     }

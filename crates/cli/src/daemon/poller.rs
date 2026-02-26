@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 use crate::daemon::SpeedrunOps;
 use crate::daemon::database::types::NewRun;
@@ -15,6 +16,7 @@ pub async fn poll_speedrun_com_loop(
     ctx: RunProcessingContext,
     config: PollingConfig,
     work_notify: Arc<Notify>,
+    token: CancellationToken,
 ) -> Result<()> {
     let poll_interval = std::time::Duration::from_secs(config.poll_interval_seconds);
 
@@ -24,11 +26,25 @@ pub async fn poll_speedrun_com_loop(
     );
 
     loop {
-        if let Err(e) = poll_speedrun_com(&ctx, &config, &work_notify).await {
-            error!("Speedrun.com poll iteration failed: {:#}", e);
+        tokio::select! {
+            _ = token.cancelled() => {
+                info!("Poller shutting down");
+                return Ok(());
+            }
+            result = poll_speedrun_com(&ctx, &config, &work_notify) => {
+                if let Err(e) = result {
+                    error!("Speedrun.com poll iteration failed: {:#}", e);
+                }
+            }
         }
 
-        tokio::time::sleep(poll_interval).await;
+        tokio::select! {
+            _ = token.cancelled() => {
+                info!("Poller shutting down");
+                return Ok(());
+            }
+            _ = tokio::time::sleep(poll_interval) => {}
+        }
     }
 }
 

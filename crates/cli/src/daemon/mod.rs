@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use log::info;
 use std::sync::Arc;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 pub mod bot_notifier;
 pub mod config;
@@ -19,7 +20,11 @@ pub use processor::{ProcessResult, find_run_to_process, process_runs_loop};
 pub use run_processing::{RunProcessingContext, download_and_run_replay};
 pub use speedrun_api::{SpeedrunClient, SpeedrunOps};
 
-pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<()> {
+pub async fn run_daemon(
+    config: DaemonConfig,
+    src_rules: SrcRunRules,
+    token: CancellationToken,
+) -> Result<()> {
     info!("Starting daemon with config: {:?}", config);
     info!("Monitoring {} game(s)", src_rules.games.len());
 
@@ -35,16 +40,20 @@ pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<
 
     let work_notify = Arc::new(Notify::new());
 
-    let (bot_notifier, bot_actor_task) = if let Some(cfg) = &config.bot_notifier {
+    let bot_notifier = if let Some(cfg) = &config.bot_notifier {
         let (handle, rx) = BotNotifierHandle::new();
         let actor_db = db.clone();
         let actor_cfg = cfg.clone();
-        let task = tokio::spawn(bot_notifier::run_bot_notifier_actor(
-            rx, actor_db, actor_cfg,
+        let actor_token = token.clone();
+        tokio::spawn(bot_notifier::run_bot_notifier_actor(
+            rx,
+            actor_db,
+            actor_cfg,
+            actor_token,
         ));
-        (Some(handle), Some(task))
+        Some(handle)
     } else {
-        (None, None)
+        None
     };
 
     info!("Daemon started successfully");
@@ -59,17 +68,16 @@ pub async fn run_daemon(config: DaemonConfig, src_rules: SrcRunRules) -> Result<
         bot_notifier,
     };
 
-    let poller_task = poll_speedrun_com_loop(ctx.clone(), config.polling, work_notify.clone());
-    let processor_task = process_runs_loop(ctx, work_notify.clone());
+    let poller = poll_speedrun_com_loop(
+        ctx.clone(),
+        config.polling,
+        work_notify.clone(),
+        token.clone(),
+    );
+    let processor = process_runs_loop(ctx, work_notify.clone(), token);
 
-    if let Some(actor_task) = bot_actor_task {
-        let (poller_result, processor_result, _) =
-            tokio::join!(poller_task, processor_task, actor_task);
-        poller_result.or(processor_result)?;
-    } else {
-        let (poller_result, processor_result) = tokio::join!(poller_task, processor_task);
-        poller_result.or(processor_result)?;
-    }
+    let (poller_result, processor_result) = tokio::join!(poller, processor);
+    poller_result.and(processor_result)?;
 
     info!("Daemon shutting down");
     Ok(())
