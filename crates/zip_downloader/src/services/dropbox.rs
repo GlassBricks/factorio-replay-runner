@@ -1,4 +1,5 @@
 use crate::DownloadError;
+use crate::security::SecurityConfig;
 use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -6,6 +7,14 @@ use futures::StreamExt;
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
+
+fn build_client(config: &SecurityConfig) -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(config.connect_timeout)
+        .timeout(config.download_timeout)
+        .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
+        .build()
+}
 
 static DROPBOX_URL_PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
     [
@@ -39,8 +48,13 @@ impl std::fmt::Display for DropboxFileId {
     }
 }
 
-async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta, DownloadError> {
-    let client = reqwest::Client::new();
+async fn get_file_info(
+    file_id: &DropboxFileId,
+    config: &SecurityConfig,
+) -> Result<FileMeta, DownloadError> {
+    let client = build_client(config)
+        .context("Failed to build HTTP client")
+        .map_err(DownloadError::ServiceError)?;
     let url = file_id.to_direct_download_url();
     let response = client
         .head(&url)
@@ -81,10 +95,16 @@ async fn get_file_info(file_id: &DropboxFileId) -> Result<FileMeta, DownloadErro
     Ok(FileMeta { name, size })
 }
 
-async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), DownloadError> {
+async fn download_file(
+    file_id: &DropboxFileId,
+    dest: &Path,
+    config: &SecurityConfig,
+) -> Result<(), DownloadError> {
     use tokio::io::AsyncWriteExt;
 
-    let client = reqwest::Client::new();
+    let client = build_client(config)
+        .context("Failed to build HTTP client")
+        .map_err(DownloadError::ServiceError)?;
     let url = file_id.to_direct_download_url();
     let response = client
         .get(&url)
@@ -104,11 +124,19 @@ async fn download_file(file_id: &DropboxFileId, dest: &Path) -> Result<(), Downl
         .await
         .map_err(DownloadError::IoError)?;
     let mut stream = response.bytes_stream();
+    let mut total_bytes = 0u64;
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk
             .context("Failed to read response stream")
             .map_err(DownloadError::ServiceError)?;
+        total_bytes += bytes.len() as u64;
+        if total_bytes > config.max_file_size {
+            return Err(DownloadError::SecurityViolation(anyhow::anyhow!(
+                "Download exceeded maximum size of {} bytes",
+                config.max_file_size
+            )));
+        }
         file.write_all(&bytes)
             .await
             .map_err(DownloadError::IoError)?;
@@ -149,12 +177,21 @@ impl FileService for DropboxService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
-        get_file_info(file_id).await
+    async fn get_file_info(
+        &mut self,
+        file_id: &Self::FileId,
+        config: &SecurityConfig,
+    ) -> Result<FileMeta, DownloadError> {
+        get_file_info(file_id, config).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
-        download_file(file_id, dest).await
+    async fn download(
+        &mut self,
+        file_id: &Self::FileId,
+        dest: &Path,
+        config: &SecurityConfig,
+    ) -> Result<(), DownloadError> {
+        download_file(file_id, dest, config).await
     }
 }
 
@@ -193,8 +230,9 @@ mod tests {
         service: &mut DropboxService,
         test_url: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let config = SecurityConfig::default();
         let file_id = DropboxFileId::new(test_url.to_string());
-        let file_info = service.get_file_info(&file_id).await?;
+        let file_info = service.get_file_info(&file_id, &config).await?;
         assert_eq!(file_info.name, "foo.zip");
         assert_eq!(file_info.size, 119);
         Ok(())
@@ -204,9 +242,12 @@ mod tests {
         service: &mut DropboxService,
         test_url: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let config = SecurityConfig::default();
         let file_id = DropboxFileId::new(test_url.to_string());
         let temp_file = tempfile::NamedTempFile::new()?;
-        service.download(&file_id, temp_file.path()).await?;
+        service
+            .download(&file_id, temp_file.path(), &config)
+            .await?;
 
         assert!(temp_file.path().exists());
         let metadata = std::fs::metadata(temp_file.path())?;

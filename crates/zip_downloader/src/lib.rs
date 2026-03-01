@@ -167,7 +167,7 @@ impl FileDownloader {
     ) -> Result<DownloadedFile, DownloadError> {
         debug!("Getting file info");
         let file_info = download_handle
-            .get_file_info()
+            .get_file_info(security_config)
             .await
             .map_err(|e| e.with_context(&download_handle.to_string()))?;
 
@@ -186,7 +186,7 @@ impl FileDownloader {
         };
 
         download_handle
-            .download(&file_path)
+            .download(&file_path, security_config)
             .await
             .map_err(|e| e.with_context(&download_handle.to_string()))?;
 

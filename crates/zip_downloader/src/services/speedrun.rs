@@ -1,4 +1,5 @@
 use crate::DownloadError;
+use crate::security::SecurityConfig;
 use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -8,10 +9,16 @@ use std::{path::Path, process::Command};
 
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-fn create_curl_command(url: &str) -> Command {
+fn create_curl_command(url: &str, config: &SecurityConfig) -> Command {
     let mut cmd = Command::new("curl");
     cmd.arg("-s")
         .arg("-L")
+        .arg("--max-redirs")
+        .arg(config.max_redirects.to_string())
+        .arg("--connect-timeout")
+        .arg(config.connect_timeout.as_secs().to_string())
+        .arg("--max-time")
+        .arg(config.download_timeout.as_secs().to_string())
         .arg("-H")
         .arg(format!("User-Agent: {}", USER_AGENT))
         .arg("-H")
@@ -58,8 +65,11 @@ impl std::fmt::Display for SpeedrunFileId {
     }
 }
 
-async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta, DownloadError> {
-    let output = create_curl_command(file_id.url())
+async fn get_file_info(
+    file_id: &SpeedrunFileId,
+    config: &SecurityConfig,
+) -> Result<FileMeta, DownloadError> {
+    let output = create_curl_command(file_id.url(), config)
         .arg("-I")
         .output()
         .context("Failed to execute curl command for speedrun.com")
@@ -103,8 +113,14 @@ async fn get_file_info(file_id: &SpeedrunFileId) -> Result<FileMeta, DownloadErr
     Ok(FileMeta { name, size })
 }
 
-async fn download_file(file_id: &SpeedrunFileId, dest: &Path) -> Result<(), DownloadError> {
-    let output = create_curl_command(file_id.url())
+async fn download_file(
+    file_id: &SpeedrunFileId,
+    dest: &Path,
+    config: &SecurityConfig,
+) -> Result<(), DownloadError> {
+    let output = create_curl_command(file_id.url(), config)
+        .arg("--max-filesize")
+        .arg(config.max_file_size.to_string())
         .arg("-o")
         .arg(dest)
         .output()
@@ -151,12 +167,21 @@ impl FileService for SpeedrunService {
             .map(|m| SpeedrunFileId::new(m.as_str().to_string()))
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
-        get_file_info(file_id).await
+    async fn get_file_info(
+        &mut self,
+        file_id: &Self::FileId,
+        config: &SecurityConfig,
+    ) -> Result<FileMeta, DownloadError> {
+        get_file_info(file_id, config).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
-        download_file(file_id, dest).await
+    async fn download(
+        &mut self,
+        file_id: &Self::FileId,
+        dest: &Path,
+        config: &SecurityConfig,
+    ) -> Result<(), DownloadError> {
+        download_file(file_id, dest, config).await
     }
 }
 
@@ -194,44 +219,50 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_get_file_info() {
+        let config = SecurityConfig::default();
         let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
-        let file_info = service.get_file_info(&file_id).await.unwrap();
+        let file_info = service.get_file_info(&file_id, &config).await.unwrap();
         assert!(file_info.name.ends_with(".zip"));
-        // Name might be from Content-Disposition header or URL
         assert!(file_info.name.contains("Steelaxe") || file_info.name == "1d4e2.zip");
     }
 
     #[tokio::test]
     #[ignore]
     async fn test_download() {
+        let config = SecurityConfig::default();
         let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
         let temp_file = NamedTempFile::new().unwrap();
 
-        service.download(&file_id, temp_file.path()).await.unwrap();
+        service
+            .download(&file_id, temp_file.path(), &config)
+            .await
+            .unwrap();
 
         assert!(temp_file.path().exists());
         let metadata = std::fs::metadata(temp_file.path()).unwrap();
         assert!(metadata.len() > 0);
-        assert!(metadata.len() > 800_000); // Should be around 890KB based on our test
+        assert!(metadata.len() > 800_000);
     }
 
     #[tokio::test]
     #[ignore]
     async fn test_file_info_and_download_integration() {
+        let config = SecurityConfig::default();
         let mut service = SpeedrunService;
         let file_id = SpeedrunFileId::new(TEST_URL.to_string());
 
-        // Test file info
-        let _ = service.get_file_info(&file_id).await.unwrap();
+        let _ = service.get_file_info(&file_id, &config).await.unwrap();
 
-        // Test download
         let temp_file = NamedTempFile::new().unwrap();
 
-        service.download(&file_id, temp_file.path()).await.unwrap();
+        service
+            .download(&file_id, temp_file.path(), &config)
+            .await
+            .unwrap();
 
         let metadata = std::fs::metadata(temp_file.path()).unwrap();
         assert!(metadata.len() > 0);
@@ -251,7 +282,7 @@ mod tests {
                 assert!(file.path().exists());
 
                 let metadata = std::fs::metadata(file.path()).unwrap();
-                assert!(metadata.len() > 800_000); // Should be around 890KB
+                assert!(metadata.len() > 800_000);
             }
             Err(e) => {
                 panic!("FileDownloader integration test failed: {}", e);

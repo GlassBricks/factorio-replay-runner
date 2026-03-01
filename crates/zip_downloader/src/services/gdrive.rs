@@ -1,4 +1,5 @@
 use crate::DownloadError;
+use crate::security::SecurityConfig;
 use crate::services::{FileMeta, FileService};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -8,6 +9,14 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tokio::io::AsyncWriteExt as _;
 
+fn build_client(config: &SecurityConfig) -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(config.connect_timeout)
+        .timeout(config.download_timeout)
+        .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
+        .build()
+}
+
 fn public_download_url(file_id: &str) -> String {
     format!(
         "https://drive.usercontent.google.com/download?id={}&export=download&confirm=t",
@@ -15,14 +24,10 @@ fn public_download_url(file_id: &str) -> String {
     )
 }
 
-async fn get_file_info(client: &reqwest::Client, file_id: &str) -> Result<FileMeta, DownloadError> {
-    get_file_info_from_headers(client, file_id).await
-}
-
-async fn get_file_info_from_headers(
-    client: &reqwest::Client,
-    file_id: &str,
-) -> Result<FileMeta, DownloadError> {
+async fn get_file_info(file_id: &str, config: &SecurityConfig) -> Result<FileMeta, DownloadError> {
+    let client = build_client(config)
+        .context("Failed to build HTTP client")
+        .map_err(DownloadError::ServiceError)?;
     let url = public_download_url(file_id);
 
     let response = client
@@ -70,8 +75,14 @@ async fn get_file_info_from_headers(
     Ok(FileMeta { name, size })
 }
 
-async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), DownloadError> {
-    let client = reqwest::Client::new();
+async fn download_file_streaming(
+    file_id: &str,
+    dest: &Path,
+    config: &SecurityConfig,
+) -> Result<(), DownloadError> {
+    let client = build_client(config)
+        .context("Failed to build HTTP client")
+        .map_err(DownloadError::ServiceError)?;
     let url = public_download_url(file_id);
     let response = client
         .get(&url)
@@ -101,11 +112,19 @@ async fn download_file_streaming(file_id: &str, dest: &Path) -> Result<(), Downl
         .await
         .map_err(DownloadError::IoError)?;
     let mut stream = response.bytes_stream();
+    let mut total_bytes = 0u64;
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk
             .context("Failed to read response stream")
             .map_err(DownloadError::ServiceError)?;
+        total_bytes += bytes.len() as u64;
+        if total_bytes > config.max_file_size {
+            return Err(DownloadError::SecurityViolation(anyhow::anyhow!(
+                "Download exceeded maximum size of {} bytes",
+                config.max_file_size
+            )));
+        }
         file.write_all(&bytes)
             .await
             .map_err(DownloadError::IoError)?;
@@ -154,13 +173,21 @@ impl FileService for GoogleDriveService {
         })
     }
 
-    async fn get_file_info(&mut self, file_id: &Self::FileId) -> Result<FileMeta, DownloadError> {
-        let client = reqwest::Client::new();
-        get_file_info(&client, file_id).await
+    async fn get_file_info(
+        &mut self,
+        file_id: &Self::FileId,
+        config: &SecurityConfig,
+    ) -> Result<FileMeta, DownloadError> {
+        get_file_info(file_id, config).await
     }
 
-    async fn download(&mut self, file_id: &Self::FileId, dest: &Path) -> Result<(), DownloadError> {
-        download_file_streaming(file_id, dest).await
+    async fn download(
+        &mut self,
+        file_id: &Self::FileId,
+        dest: &Path,
+        config: &SecurityConfig,
+    ) -> Result<(), DownloadError> {
+        download_file_streaming(file_id, dest, config).await
     }
 }
 
@@ -195,8 +222,11 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_get_file_info() {
+        let config = SecurityConfig::default();
         let mut service = GoogleDriveService;
-        let result = service.get_file_info(&TEST_FILE_ID.to_string()).await;
+        let result = service
+            .get_file_info(&TEST_FILE_ID.to_string(), &config)
+            .await;
 
         match result {
             Ok(file_info) => {
@@ -238,10 +268,11 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_download() {
+        let config = SecurityConfig::default();
         let mut service = GoogleDriveService;
         let temp_file = NamedTempFile::new().unwrap();
         let result = service
-            .download(&TEST_FILE_ID.to_string(), temp_file.path())
+            .download(&TEST_FILE_ID.to_string(), temp_file.path(), &config)
             .await;
 
         match result {
