@@ -9,6 +9,7 @@ use super::config::BotNotifierConfig;
 
 const MAX_NOTIFY_ATTEMPTS: usize = 5;
 const HEARTBEAT_INTERVAL_SECS: u64 = 15 * 60;
+const AUTH_TOKEN_ENV_VAR: &str = "RUNNER_STATUS_AUTH_TOKEN";
 
 #[derive(Clone)]
 pub struct BotNotifierHandle {
@@ -32,6 +33,8 @@ pub async fn run_bot_notifier_actor(
     config: BotNotifierConfig,
     token: CancellationToken,
 ) -> Result<(), anyhow::Error> {
+    let auth_token = std::env::var(AUTH_TOKEN_ENV_VAR)
+        .map_err(|_| anyhow::anyhow!("{AUTH_TOKEN_ENV_VAR} env var is required"))?;
     let client = Client::new();
     let mut retry_interval =
         tokio::time::interval(Duration::from_secs(config.retry_interval_seconds));
@@ -43,13 +46,13 @@ pub async fn run_bot_notifier_actor(
     loop {
         tokio::select! {
             Some(run_id) = rx.recv() => {
-                notify_run(&db, &client, &config, &run_id).await;
+                notify_run(&db, &client, &config, &auth_token, &run_id).await;
             }
             _ = retry_interval.tick() => {
-                retry_unnotified(&db, &client, &config).await;
+                retry_unnotified(&db, &client, &config, &auth_token).await;
             }
             _ = heartbeat_interval.tick() => {
-                send_heartbeat(&db, &client, &config).await;
+                send_heartbeat(&db, &client, &config, &auth_token).await;
             }
             _ = token.cancelled() => {
                 info!("Bot notifier shutting down");
@@ -59,7 +62,7 @@ pub async fn run_bot_notifier_actor(
     }
 }
 
-async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, run_id: &str) {
+async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str, run_id: &str) {
     for _ in 0..MAX_NOTIFY_ATTEMPTS {
         let Some(run) = db.get_run(run_id).await.ok().flatten() else {
             return;
@@ -69,7 +72,7 @@ async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, 
         }
 
         let status = run_status_to_bot_status(&run.status);
-        if !post_status(client, config, run_id, status, run.error_message.as_deref()).await {
+        if !post_status(client, config, auth_token, run_id, status, run.error_message.as_deref()).await {
             return;
         }
 
@@ -83,7 +86,7 @@ async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, 
     }
 }
 
-async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierConfig) {
+async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str) {
     let runs = match db.get_unnotified_runs().await {
         Ok(runs) => runs,
         Err(e) => {
@@ -107,7 +110,7 @@ async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierCo
         })
         .collect();
 
-    if !post_statuses_bulk(client, config, &entries).await {
+    if !post_statuses_bulk(client, config, auth_token, &entries).await {
         warn!("Bulk notification failed for {} runs", runs.len());
         return;
     }
@@ -124,6 +127,7 @@ async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierCo
 async fn post_statuses_bulk(
     client: &Client,
     config: &BotNotifierConfig,
+    auth_token: &str,
     entries: &[serde_json::Value],
 ) -> bool {
     let url = format!("{}/api/runs/status", config.bot_url);
@@ -131,7 +135,7 @@ async fn post_statuses_bulk(
 
     let result = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", config.auth_token))
+        .header("Authorization", format!("Bearer {}", auth_token))
         .json(&body)
         .send()
         .await;
@@ -149,7 +153,7 @@ async fn post_statuses_bulk(
     }
 }
 
-async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConfig) {
+async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str) {
     let runs = match db.get_non_final_runs().await {
         Ok(runs) => runs,
         Err(e) => {
@@ -168,7 +172,7 @@ async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConf
 
     let result = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", config.auth_token))
+        .header("Authorization", format!("Bearer {}", auth_token))
         .json(&body)
         .send()
         .await;
@@ -189,6 +193,7 @@ async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConf
 async fn post_status(
     client: &Client,
     config: &BotNotifierConfig,
+    auth_token: &str,
     run_id: &str,
     status: &str,
     message: Option<&str>,
@@ -198,7 +203,7 @@ async fn post_status(
 
     let result = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", config.auth_token))
+        .header("Authorization", format!("Bearer {}", auth_token))
         .json(&body)
         .send()
         .await;
@@ -242,10 +247,11 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    const TEST_TOKEN: &str = "test-token";
+
     fn make_config(bot_url: &str) -> BotNotifierConfig {
         BotNotifierConfig {
             bot_url: bot_url.to_string(),
-            auth_token: "test-token".to_string(),
             retry_interval_seconds: 1800,
         }
     }
@@ -271,7 +277,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        notify_run(&db, &client, &config, "run123").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "run123").await;
 
         mock_server.verify().await;
 
@@ -295,7 +301,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        notify_run(&db, &client, &config, "run123").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "run123").await;
 
         mock_server.verify().await;
     }
@@ -314,7 +320,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        notify_run(&db, &client, &config, "run500").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "run500").await;
 
         let run = db.get_run("run500").await.unwrap().unwrap();
         assert!(!run.bot_notified);
@@ -327,7 +333,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config("http://127.0.0.1:19999");
-        notify_run(&db, &client, &config, "run_unreachable").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "run_unreachable").await;
 
         let run = db.get_run("run_unreachable").await.unwrap().unwrap();
         assert!(!run.bot_notified);
@@ -349,7 +355,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        retry_unnotified(&db, &client, &config).await;
+        retry_unnotified(&db, &client, &config, TEST_TOKEN).await;
 
         mock_server.verify().await;
 
@@ -374,7 +380,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        retry_unnotified(&db, &client, &config).await;
+        retry_unnotified(&db, &client, &config, TEST_TOKEN).await;
 
         mock_server.verify().await;
 
@@ -398,7 +404,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        retry_unnotified(&db, &client, &config).await;
+        retry_unnotified(&db, &client, &config, TEST_TOKEN).await;
 
         let run = db.get_run("bulk_fail").await.unwrap().unwrap();
         assert!(!run.bot_notified);
@@ -417,7 +423,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        retry_unnotified(&db, &client, &config).await;
+        retry_unnotified(&db, &client, &config, TEST_TOKEN).await;
 
         mock_server.verify().await;
     }
@@ -463,7 +469,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        notify_run(&db, &client, &config, "run_already").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "run_already").await;
 
         mock_server.verify().await;
     }
@@ -481,7 +487,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        notify_run(&db, &client, &config, "nonexistent").await;
+        notify_run(&db, &client, &config, TEST_TOKEN, "nonexistent").await;
 
         mock_server.verify().await;
     }
@@ -554,7 +560,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        send_heartbeat(&db, &client, &config).await;
+        send_heartbeat(&db, &client, &config, TEST_TOKEN).await;
 
         mock_server.verify().await;
     }
@@ -572,7 +578,7 @@ mod tests {
 
         let client = Client::new();
         let config = make_config(&mock_server.uri());
-        send_heartbeat(&db, &client, &config).await;
+        send_heartbeat(&db, &client, &config, TEST_TOKEN).await;
 
         mock_server.verify().await;
     }
