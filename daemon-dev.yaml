@@ -1,0 +1,6 @@
+polling:
+  poll_interval_seconds: 900
+  lookback_days: 30
+
+bot_notifier:
+  bot_url: http://localhost:3001
