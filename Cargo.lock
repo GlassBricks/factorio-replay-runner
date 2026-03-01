@@ -447,6 +447,7 @@ dependencies = [
  "humantime",
  "itertools",
  "log",
+ "regex",
  "replay_script",
  "reqwest",
  "serde",

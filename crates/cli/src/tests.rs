@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use factorio_manager::error::FactorioError;
 use log::LevelFilter;
 use replay_script::ReplayScripts;
 use std::fs;
@@ -81,6 +82,44 @@ async fn test_run_file() -> Result<()> {
             expected_content.trim(),
             "Log output should match expected content. Actual output written to TEST_actual.txt"
         );
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_no_replay_data_gives_detailed_error() -> Result<()> {
+    init_test_logger();
+    write_all_checks();
+
+    let test_dir = test_utils::test_tmp_dir().join("cli_no_replay_test");
+    let fixtures_dir = test_utils::fixtures_dir();
+    let install_dir_path = test_utils::test_factorio_installs_dir();
+
+    if test_dir.exists() {
+        fs::remove_dir_all(&test_dir).ok();
+    }
+    fs::create_dir_all(&test_dir)?;
+
+    let save_path = fixtures_dir.join("EMPTY_SAVE.zip");
+    let rules_path = fixtures_dir.join(ALL_RULES_FILE);
+    let output_path = test_dir.join("output.log");
+
+    let err = run_file(&save_path, &rules_path, &install_dir_path, &output_path)
+        .await
+        .expect_err("should fail on save with no replay data");
+
+    let factorio_err = err.downcast_ref::<FactorioError>().unwrap();
+    match factorio_err {
+        FactorioError::ProcessExitedUnsuccessfully { detail, .. } => {
+            let detail = detail.as_ref().expect("should have error detail from log");
+            assert!(
+                detail.contains("Error loading replay"),
+                "detail should mention replay loading error, got: {detail}"
+            );
+        }
+        other => panic!("expected ProcessExitedUnsuccessfully, got: {other:?}"),
     }
 
     Ok(())

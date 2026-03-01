@@ -58,7 +58,13 @@ impl From<FactorioError> for RunProcessingError {
             FactorioError::InstallationNotFound(_) => ErrorClass::Retryable,
             FactorioError::InstallDirError(_) => ErrorClass::Retryable,
             FactorioError::ProcessSpawnFailed(_) => ErrorClass::Retryable,
-            FactorioError::ProcessExitedUnsuccessfully { .. } => ErrorClass::Retryable,
+            FactorioError::ProcessExitedUnsuccessfully { detail, .. } => {
+                if detail.is_some() {
+                    ErrorClass::Final
+                } else {
+                    ErrorClass::Retryable
+                }
+            }
             FactorioError::ModInfoReadFailed(_) => ErrorClass::Retryable,
             FactorioError::ReplayTimeout => ErrorClass::Final,
             FactorioError::IoError(_) => ErrorClass::Retryable,

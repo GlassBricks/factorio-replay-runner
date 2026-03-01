@@ -20,7 +20,7 @@ use tokio::time::{Instant, sleep};
 
 use crate::config::RunRules;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
     pub win_condition_not_completed: bool,
@@ -123,8 +123,10 @@ async fn run_and_log_replay_inner(
         }
     };
     if !exit_status.success() && !output.exited_via_script {
+        let detail = extract_error_from_log(&instance.log_file_path());
         return Err(FactorioError::ProcessExitedUnsuccessfully {
             exit_code: exit_status.code(),
+            detail,
         });
     }
 
@@ -163,6 +165,20 @@ async fn terminate_and_wait(process: &mut FactorioProcess) {
         process.kill();
         process.wait().await.ok();
     }
+}
+
+fn extract_error_from_log(log_path: &Path) -> Option<String> {
+    use regex::Regex;
+    use std::sync::LazyLock;
+    // Factorio log: "   0.760 Error RunReplay.cpp:27: Error loading replay: ..."
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\s*[\d.]+ Error \S+: (.+)").unwrap());
+
+    let content = std::fs::read_to_string(log_path).ok()?;
+    content
+        .lines()
+        .rev()
+        .find_map(|line| RE.captures(line).map(|c| c[1].to_string()))
 }
 
 fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) {

@@ -9,3 +9,4 @@
 /worktrees/
 .claude
 run_verification.db*
+*.installed.zip
