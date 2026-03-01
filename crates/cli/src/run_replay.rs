@@ -96,6 +96,17 @@ async fn run_and_log_replay(
     log_path: &Path,
     rules: &RunRules,
 ) -> Result<ReplayReport, FactorioError> {
+    let result = run_and_log_replay_inner(instance, installed_save_path, log_path, rules).await;
+    copy_factorio_log(instance, log_path);
+    result
+}
+
+async fn run_and_log_replay_inner(
+    instance: &FactorioInstance,
+    installed_save_path: &Path,
+    log_path: &Path,
+    rules: &RunRules,
+) -> Result<ReplayReport, FactorioError> {
     info!("Starting replay. Log file at {}", log_path.display());
     let mut log_file = File::create(log_path)?;
 
@@ -122,8 +133,6 @@ async fn run_and_log_replay(
     let mut bench_process = instance.spawn_benchmark(installed_save_path, 1)?;
     let bench_output = record_output(&mut bench_process, &mut log_file).await?;
     terminate_and_wait(&mut bench_process).await;
-
-    copy_factorio_log(instance, log_path)?;
 
     let win_condition_not_completed =
         rules.replay_scripts.win_on_scenario_finished && !output.exited_via_script;
@@ -156,18 +165,16 @@ async fn terminate_and_wait(process: &mut FactorioProcess) {
     }
 }
 
-fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(), FactorioError> {
+fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) {
     let factorio_log = instance.log_file_path();
-    factorio_log
-        .exists()
-        .then(|| {
-            let output_dir = log_path.parent().unwrap();
-            let dest_path = output_dir.join("factorio-current.log");
-            std::fs::copy(&factorio_log, &dest_path)
-                .map(|_| debug!("Copied factorio log to: {}", dest_path.display()))
-        })
-        .transpose()?;
-    Ok(())
+    if !factorio_log.exists() {
+        return;
+    }
+    let dest_path = log_path.parent().unwrap().join("factorio-current.log");
+    match std::fs::copy(&factorio_log, &dest_path) {
+        Ok(_) => debug!("Copied factorio log to: {}", dest_path.display()),
+        Err(e) => log::warn!("Failed to copy factorio log: {e}"),
+    }
 }
 
 /// returns when stdout closes.
