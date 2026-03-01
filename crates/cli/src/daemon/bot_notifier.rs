@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use super::config::BotNotifierConfig;
 
 const MAX_NOTIFY_ATTEMPTS: usize = 5;
-const AUTH_TOKEN_ENV_VAR: &str = "RUNNER_STATUS_AUTH_TOKEN";
+pub const AUTH_TOKEN_ENV_VAR: &str = "RUNNER_STATUS_AUTH_TOKEN";
 
 #[derive(Clone)]
 pub struct BotNotifierHandle {
@@ -31,9 +31,9 @@ pub async fn run_bot_notifier_actor(
     db: Database,
     config: BotNotifierConfig,
     token: CancellationToken,
+    auth_token: String,
 ) -> Result<(), anyhow::Error> {
-    let auth_token = std::env::var(AUTH_TOKEN_ENV_VAR)
-        .map_err(|_| anyhow::anyhow!("{AUTH_TOKEN_ENV_VAR} env var is required"))?;
+    info!("Starting bot notifier");
     let client = Client::new();
 
     retry_unnotified(&db, &client, &config, &auth_token).await;

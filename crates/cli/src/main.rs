@@ -99,6 +99,7 @@ struct DaemonArgs {
 }
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
     init_logger();
 
     let token = setup_signal_handler()?;

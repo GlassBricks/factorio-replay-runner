@@ -41,22 +41,24 @@ pub async fn run_daemon(
     let work_notify = Arc::new(Notify::new());
 
     let bot_notifier = if let Some(cfg) = &config.bot_notifier {
+        let auth_token = std::env::var(bot_notifier::AUTH_TOKEN_ENV_VAR)
+            .context("RUNNER_STATUS_AUTH_TOKEN env var is required for bot notifier")?;
         let (handle, rx) = BotNotifierHandle::new();
-        let actor_db = db.clone();
-        let actor_cfg = cfg.clone();
-        let actor_token = token.clone();
-        tokio::spawn(bot_notifier::run_bot_notifier_actor(
+        let join_handle = tokio::spawn(bot_notifier::run_bot_notifier_actor(
             rx,
-            actor_db,
-            actor_cfg,
-            actor_token,
+            db.clone(),
+            cfg.clone(),
+            token.clone(),
+            auth_token,
         ));
-        Some(handle)
+        Some((handle, join_handle))
     } else {
         None
     };
 
     info!("Daemon started successfully");
+
+    let bot_notifier_handle = bot_notifier.as_ref().map(|(h, _)| h.clone());
 
     let ctx = RunProcessingContext {
         db,
@@ -65,7 +67,7 @@ pub async fn run_daemon(
         install_dir: config.install_dir,
         output_dir: config.output_dir,
         retry_config: config.retry,
-        bot_notifier,
+        bot_notifier: bot_notifier_handle,
     };
 
     let poller = poll_speedrun_com_loop(
@@ -77,6 +79,13 @@ pub async fn run_daemon(
     let processor = process_runs_loop(ctx, work_notify.clone(), token);
 
     let (poller_result, processor_result) = tokio::join!(poller, processor);
+
+    if let Some((_, join_handle)) = bot_notifier {
+        if let Ok(Err(e)) = join_handle.await {
+            log::error!("Bot notifier exited with error: {:#}", e);
+        }
+    }
+
     poller_result.and(processor_result)?;
 
     info!("Daemon shutting down");
