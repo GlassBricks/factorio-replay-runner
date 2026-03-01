@@ -4,4 +4,5 @@
 [Error]	       614	GlassBricks used map editor!
 [Error]	       866	GlassBricks ran disallowed command: /c game.print("hi")
 [Error]	      1122	GlassBricks used map editor!
+[Error]	     12085	Required research "steel-axe" not completed
 VERIFICATION FAILED: win_on_scenario_finished enabled but scenario never completed

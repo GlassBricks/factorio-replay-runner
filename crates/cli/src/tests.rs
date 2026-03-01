@@ -18,7 +18,8 @@ fn init_test_logger() {
 
 fn write_all_checks() {
     let fixtures_dir = test_utils::fixtures_dir();
-    let all_scripts = ReplayScripts::all_enabled();
+    let mut all_scripts = ReplayScripts::all_enabled();
+    all_scripts.required_research = vec!["steel-axe".to_string()];
     let test_all_rules = RunRules {
         expected_mods_override: Some(
             ["base", "quality", "elevated-rails", "space-age"]

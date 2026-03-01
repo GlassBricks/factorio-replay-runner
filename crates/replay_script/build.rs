@@ -48,6 +48,8 @@ impl ScriptMetadata {
                 if is_no_prefixed { "false" } else { "true" }
             } else if param_type.contains("Option") {
                 "None"
+            } else if param_type.starts_with("Vec<") {
+                "vec![]"
             } else {
                 panic!(
                     "Default value not provided for parameter type: {}",
@@ -61,6 +63,8 @@ impl ScriptMetadata {
                 if is_no_prefixed { "!param" } else { "param" }
             } else if param_type.contains("Option") {
                 "param.is_some()"
+            } else if param_type.starts_with("Vec<") {
+                "!param.is_empty()"
             } else {
                 panic!(
                     "Enable condition not provided for parameter type: {}",
@@ -70,18 +74,18 @@ impl ScriptMetadata {
             .to_string()
         });
 
-        let enable_value = parse.enable_value.unwrap_or_else(|| {
-            match enable_if.as_str() {
-                "param" => "true",
-                "!param" => "false",
-                "param.is_some()" => default_value.as_str(),
+        let enable_value = parse
+            .enable_value
+            .unwrap_or_else(|| match enable_if.as_str() {
+                "param" => "true".to_string(),
+                "!param" => "false".to_string(),
+                "param.is_some()" => default_value.clone(),
+                "!param.is_empty()" => "vec![]".to_string(),
                 _ => panic!(
                     "A value needs to be provided for \"default enable\" condition: {}",
                     enable_if
                 ),
-            }
-            .to_string()
-        });
+            });
 
         Self {
             file_name,
@@ -223,11 +227,18 @@ fn generate_file_list_for_replay_scripts(out_dir: &str) {
                             "self.{}.map(|value| {}).unwrap_or_else(|| \"undefined\".to_string())",
                             name, inner_formatter
                         )
+                    } else if param_type.starts_with("Vec<") {
+                        let mut s = String::new();
+                        s.push_str(r#"{ let items: Vec<String> = self."#);
+                        s.push_str(name);
+                        s.push_str(r#".iter().map(|s| format!("\"{}\"", s)).collect(); "#);
+                        s.push_str(r#"format!("{{{}}}", items.join(",")) }"#);
+                        s
                     } else {
                         formatter_for_type(param_type).replace("value", &format!("self.{}", name))
                     };
 
-                let should_borrow = param_type.contains("String");
+                let should_borrow = param_type.contains("String") || param_type.starts_with("Vec<");
                 let borrow_str = if should_borrow { "&" } else { "" };
                 format!(
                     r#"        let param = {borrow_str}self.{name};

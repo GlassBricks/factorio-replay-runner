@@ -72,6 +72,14 @@ exitReplay = function (message: string): void {
   print("REPLAY_EXIT_SUCCESS:", game.ticks_played, message)
 }
 
+// Factorio script lifecycle:
+//   --run-replay: calls on_init (not on_load). storage is initialized fresh.
+//   --benchmark:  calls on_load (not on_init). storage comes from the save file as-is.
+//
+// on_init sets storage._replay_script_DATA during replay. When the same save is
+// later loaded with --benchmark, on_init does NOT run, so storage._replay_script_DATA
+// is undefined. on_load detects this and registers afterReplay callbacks to fire
+// on the next tick.
 addReplayLib({
   on_init() {
     storage._replay_script_DATA = new LuaSet<String>()

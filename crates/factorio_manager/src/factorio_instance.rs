@@ -77,6 +77,19 @@ impl FactorioInstance {
         self.spawn(&["--run-replay", save_path.to_str().unwrap()])
     }
 
+    pub fn spawn_benchmark(
+        &self,
+        save_path: &Path,
+        ticks: u32,
+    ) -> Result<FactorioProcess, FactorioError> {
+        self.spawn(&[
+            "--benchmark",
+            save_path.to_str().unwrap(),
+            "--benchmark-ticks",
+            &ticks.to_string(),
+        ])
+    }
+
     pub async fn run_and_get_output(&self, args: &[&str]) -> Result<Output, FactorioError> {
         let mut cmd = self.new_run_command();
         cmd.args(args);

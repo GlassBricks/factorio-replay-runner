@@ -40,7 +40,9 @@ games:
       wkpy7ljk: # 100%
         blueprint_import: true
 
-      7dggqegd: {} # Steelaxe%
+      7dggqegd: # Steelaxe%
+        required_research:
+          - steel-axe
 
       wkpjq9wk: # Any% MP
         win_on_scenario_finished: true

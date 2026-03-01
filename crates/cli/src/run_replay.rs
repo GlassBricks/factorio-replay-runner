@@ -97,8 +97,11 @@ async fn run_and_log_replay(
     rules: &RunRules,
 ) -> Result<ReplayReport, FactorioError> {
     info!("Starting replay. Log file at {}", log_path.display());
+    let mut log_file = File::create(log_path)?;
+
+    // Phase 1: replay
     let mut process = instance.spawn_replay(installed_save_path)?;
-    let output = record_output(&mut process, log_path).await?;
+    let output = record_output(&mut process, &mut log_file).await?;
 
     process.terminate();
     let exit_status = match tokio::time::timeout(Duration::from_secs(5), process.wait()).await {
@@ -114,24 +117,43 @@ async fn run_and_log_replay(
         });
     }
 
+    // Phase 2: run --benchmark 1 tick on the post-replay save to trigger on_load,
+    // which fires afterReplay callbacks (on_init only runs during --run-replay).
+    let mut bench_process = instance.spawn_benchmark(installed_save_path, 1)?;
+    let bench_output = record_output(&mut bench_process, &mut log_file).await?;
+    terminate_and_wait(&mut bench_process).await;
+
     copy_factorio_log(instance, log_path)?;
 
     let win_condition_not_completed =
         rules.replay_scripts.win_on_scenario_finished && !output.exited_via_script;
 
+    let max_msg_level = output.max_level.max(bench_output.max_level);
     let mut messages = output.messages;
+    messages.extend(bench_output.messages);
+
     if win_condition_not_completed {
         let msg = "win_on_scenario_finished enabled but scenario never completed";
         messages.push(msg.to_string());
-        let mut log_file = File::options().append(true).open(log_path)?;
         writeln!(log_file, "VERIFICATION FAILED: {msg}")?;
     }
 
     Ok(ReplayReport {
-        max_msg_level: output.max_level,
+        max_msg_level,
         win_condition_not_completed,
         messages,
     })
+}
+
+async fn terminate_and_wait(process: &mut FactorioProcess) {
+    process.terminate();
+    if tokio::time::timeout(Duration::from_secs(5), process.wait())
+        .await
+        .is_err()
+    {
+        process.kill();
+        process.wait().await.ok();
+    }
 }
 
 fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(), FactorioError> {
@@ -157,9 +179,8 @@ struct RecordOutputResult {
 
 async fn record_output(
     process: &mut FactorioProcess,
-    log_path: &Path,
+    log_file: &mut File,
 ) -> Result<RecordOutputResult, FactorioError> {
-    let mut log_file = File::create(log_path)?;
     let mut stream = msg_stream(process);
 
     let mut max_level = MsgLevel::Info;
