@@ -85,6 +85,30 @@ impl Database {
         Ok(runs)
     }
 
+    pub async fn get_non_final_runs(&self) -> Result<Vec<Run>> {
+        let runs = sqlx::query_as!(
+            Run,
+            r#"
+            SELECT run_id, game_id, category_id,
+                   submitted_date as "submitted_date: chrono::DateTime<Utc>",
+                   status as "status: RunStatus",
+                   error_message,
+                   retry_count as "retry_count: u32",
+                   next_retry_at as "next_retry_at: chrono::DateTime<Utc>",
+                   error_class,
+                   created_at as "created_at: chrono::DateTime<Utc>",
+                   updated_at as "updated_at: chrono::DateTime<Utc>",
+                   bot_notified as "bot_notified: bool"
+            FROM runs
+            WHERE status IN ('discovered', 'processing')
+            "#
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(runs)
+    }
+
     pub async fn set_bot_notified_if_status(
         &self,
         run_id: &str,
@@ -1096,6 +1120,7 @@ mod tests {
         let report = ReplayReport {
             max_msg_level: MsgLevel::Info,
             win_condition_not_completed: false,
+            messages: vec![],
         };
         let config = RetryConfig::default();
 
@@ -1153,6 +1178,7 @@ mod tests {
         let report = ReplayReport {
             max_msg_level: MsgLevel::Info,
             win_condition_not_completed: false,
+            messages: vec![],
         };
         db.process_replay_result("run_e2e", Ok(report), &config)
             .await
@@ -1419,7 +1445,7 @@ mod tests {
         .unwrap();
 
         db.mark_run_passed("run1").await.unwrap();
-        db.mark_run_failed("run2").await.unwrap();
+        db.mark_run_failed("run2", None).await.unwrap();
 
         let counts = db.count_runs_by_status().await.unwrap();
         assert_eq!(counts.get(&RunStatus::Discovered), Some(&1));

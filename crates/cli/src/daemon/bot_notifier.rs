@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use super::config::BotNotifierConfig;
 
 const MAX_NOTIFY_ATTEMPTS: usize = 5;
+const HEARTBEAT_INTERVAL_SECS: u64 = 15 * 60;
 
 #[derive(Clone)]
 pub struct BotNotifierHandle {
@@ -35,6 +36,9 @@ pub async fn run_bot_notifier_actor(
     let mut retry_interval =
         tokio::time::interval(Duration::from_secs(config.retry_interval_seconds));
     retry_interval.tick().await;
+    let mut heartbeat_interval =
+        tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+    heartbeat_interval.tick().await;
 
     loop {
         tokio::select! {
@@ -43,6 +47,9 @@ pub async fn run_bot_notifier_actor(
             }
             _ = retry_interval.tick() => {
                 retry_unnotified(&db, &client, &config).await;
+            }
+            _ = heartbeat_interval.tick() => {
+                send_heartbeat(&db, &client, &config).await;
             }
             _ = token.cancelled() => {
                 info!("Bot notifier shutting down");
@@ -87,6 +94,43 @@ async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierCo
 
     for run in runs {
         notify_run(db, client, config, &run.run_id).await;
+    }
+}
+
+async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConfig) {
+    let runs = match db.get_non_final_runs().await {
+        Ok(runs) => runs,
+        Err(e) => {
+            warn!("Failed to query non-final runs for heartbeat: {}", e);
+            return;
+        }
+    };
+
+    if runs.is_empty() {
+        return;
+    }
+
+    let run_ids: Vec<&str> = runs.iter().map(|r| r.run_id.as_str()).collect();
+    let url = format!("{}/api/runs/heartbeat", config.bot_url);
+    let body = serde_json::json!({ "runIds": run_ids });
+
+    let result = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.auth_token))
+        .json(&body)
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) if resp.status().is_success() => {
+            info!("Heartbeat sent for {} runs", run_ids.len());
+        }
+        Ok(resp) => {
+            warn!("Heartbeat failed (HTTP {})", resp.status());
+        }
+        Err(e) => {
+            warn!("Heartbeat error: {}", e);
+        }
     }
 }
 
@@ -352,6 +396,67 @@ mod tests {
 
         let run = db.get_run("run_mismatch").await.unwrap().unwrap();
         assert!(!run.bot_notified);
+    }
+
+    #[tokio::test]
+    async fn test_get_non_final_runs_returns_discovered_and_processing() {
+        let db = Database::in_memory().await.unwrap();
+        insert_test_run(&db, "run_disc").await;
+        insert_test_run(&db, "run_proc").await;
+        insert_test_run(&db, "run_passed").await;
+        insert_test_run(&db, "run_failed").await;
+
+        db.mark_run_processing("run_proc").await.unwrap();
+        db.mark_run_passed("run_passed").await.unwrap();
+        db.mark_run_failed("run_failed", Some("bad")).await.unwrap();
+
+        let non_final = db.get_non_final_runs().await.unwrap();
+        let ids: Vec<&str> = non_final.iter().map(|r| r.run_id.as_str()).collect();
+        assert!(ids.contains(&"run_disc"));
+        assert!(ids.contains(&"run_proc"));
+        assert!(!ids.contains(&"run_passed"));
+        assert!(!ids.contains(&"run_failed"));
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_sends_non_final_run_ids() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/runs/heartbeat"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let db = Database::in_memory().await.unwrap();
+        insert_test_run(&db, "run_hb1").await;
+        insert_test_run(&db, "run_hb2").await;
+        db.mark_run_passed("run_hb2").await.unwrap();
+
+        let client = Client::new();
+        let config = make_config(&mock_server.uri());
+        send_heartbeat(&db, &client, &config).await;
+
+        mock_server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_skips_when_no_non_final_runs() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&mock_server)
+            .await;
+
+        let db = Database::in_memory().await.unwrap();
+
+        let client = Client::new();
+        let config = make_config(&mock_server.uri());
+        send_heartbeat(&db, &client, &config).await;
+
+        mock_server.verify().await;
     }
 
     #[tokio::test]
