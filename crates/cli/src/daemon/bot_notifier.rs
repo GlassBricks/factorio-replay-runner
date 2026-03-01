@@ -62,7 +62,13 @@ pub async fn run_bot_notifier_actor(
     }
 }
 
-async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str, run_id: &str) {
+async fn notify_run(
+    db: &Database,
+    client: &Client,
+    config: &BotNotifierConfig,
+    auth_token: &str,
+    run_id: &str,
+) {
     for _ in 0..MAX_NOTIFY_ATTEMPTS {
         let Some(run) = db.get_run(run_id).await.ok().flatten() else {
             return;
@@ -72,7 +78,16 @@ async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, 
         }
 
         let status = run_status_to_bot_status(&run.status);
-        if !post_status(client, config, auth_token, run_id, status, run.error_message.as_deref()).await {
+        if !post_status(
+            client,
+            config,
+            auth_token,
+            run_id,
+            status,
+            run.error_message.as_deref(),
+        )
+        .await
+        {
             return;
         }
 
@@ -86,7 +101,12 @@ async fn notify_run(db: &Database, client: &Client, config: &BotNotifierConfig, 
     }
 }
 
-async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str) {
+async fn retry_unnotified(
+    db: &Database,
+    client: &Client,
+    config: &BotNotifierConfig,
+    auth_token: &str,
+) {
     let runs = match db.get_unnotified_runs().await {
         Ok(runs) => runs,
         Err(e) => {
@@ -153,7 +173,12 @@ async fn post_statuses_bulk(
     }
 }
 
-async fn send_heartbeat(db: &Database, client: &Client, config: &BotNotifierConfig, auth_token: &str) {
+async fn send_heartbeat(
+    db: &Database,
+    client: &Client,
+    config: &BotNotifierConfig,
+    auth_token: &str,
+) {
     let runs = match db.get_non_final_runs().await {
         Ok(runs) => runs,
         Err(e) => {
