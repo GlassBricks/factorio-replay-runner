@@ -92,8 +92,60 @@ async fn retry_unnotified(db: &Database, client: &Client, config: &BotNotifierCo
         }
     };
 
-    for run in runs {
-        notify_run(db, client, config, &run.run_id).await;
+    if runs.is_empty() {
+        return;
+    }
+
+    let entries: Vec<serde_json::Value> = runs
+        .iter()
+        .map(|run| {
+            serde_json::json!({
+                "runId": run.run_id,
+                "status": run_status_to_bot_status(&run.status),
+                "message": run.error_message,
+            })
+        })
+        .collect();
+
+    if !post_statuses_bulk(client, config, &entries).await {
+        warn!("Bulk notification failed for {} runs", runs.len());
+        return;
+    }
+
+    for run in &runs {
+        let _ = db
+            .set_bot_notified_if_status(&run.run_id, true, &run.status)
+            .await;
+    }
+
+    info!("Bulk notified {} runs", runs.len());
+}
+
+async fn post_statuses_bulk(
+    client: &Client,
+    config: &BotNotifierConfig,
+    entries: &[serde_json::Value],
+) -> bool {
+    let url = format!("{}/api/runs/status", config.bot_url);
+    let body = serde_json::json!({ "runs": entries });
+
+    let result = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.auth_token))
+        .json(&body)
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) if resp.status().is_success() => true,
+        Ok(resp) => {
+            warn!("Bulk notification failed (HTTP {})", resp.status());
+            false
+        }
+        Err(e) => {
+            warn!("Bulk notification error: {}", e);
+            false
+        }
     }
 }
 
@@ -282,10 +334,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_retry_unnotified_notifies_runs() {
+    async fn test_retry_unnotified_sends_bulk_request() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/api/runs/run_retry/status"))
+            .and(path("/api/runs/status"))
+            .and(header("Authorization", "Bearer test-token"))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&mock_server)
@@ -302,6 +355,71 @@ mod tests {
 
         let run = db.get_run("run_retry").await.unwrap().unwrap();
         assert!(run.bot_notified);
+    }
+
+    #[tokio::test]
+    async fn test_retry_unnotified_bulk_with_multiple_runs() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/runs/status"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let db = Database::in_memory().await.unwrap();
+        insert_test_run(&db, "bulk_1").await;
+        insert_test_run(&db, "bulk_2").await;
+        insert_test_run(&db, "bulk_3").await;
+
+        let client = Client::new();
+        let config = make_config(&mock_server.uri());
+        retry_unnotified(&db, &client, &config).await;
+
+        mock_server.verify().await;
+
+        for id in &["bulk_1", "bulk_2", "bulk_3"] {
+            let run = db.get_run(id).await.unwrap().unwrap();
+            assert!(run.bot_notified, "{} should be notified", id);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retry_unnotified_bulk_failure_leaves_unnotified() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/runs/status"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let db = Database::in_memory().await.unwrap();
+        insert_test_run(&db, "bulk_fail").await;
+
+        let client = Client::new();
+        let config = make_config(&mock_server.uri());
+        retry_unnotified(&db, &client, &config).await;
+
+        let run = db.get_run("bulk_fail").await.unwrap().unwrap();
+        assert!(!run.bot_notified);
+    }
+
+    #[tokio::test]
+    async fn test_retry_unnotified_skips_when_no_runs() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&mock_server)
+            .await;
+
+        let db = Database::in_memory().await.unwrap();
+
+        let client = Client::new();
+        let config = make_config(&mock_server.uri());
+        retry_unnotified(&db, &client, &config).await;
+
+        mock_server.verify().await;
     }
 
     #[tokio::test]
