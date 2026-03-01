@@ -8,7 +8,6 @@ use tokio_util::sync::CancellationToken;
 use super::config::BotNotifierConfig;
 
 const MAX_NOTIFY_ATTEMPTS: usize = 5;
-const HEARTBEAT_INTERVAL_SECS: u64 = 15 * 60;
 const AUTH_TOKEN_ENV_VAR: &str = "RUNNER_STATUS_AUTH_TOKEN";
 
 #[derive(Clone)]
@@ -36,22 +35,21 @@ pub async fn run_bot_notifier_actor(
     let auth_token = std::env::var(AUTH_TOKEN_ENV_VAR)
         .map_err(|_| anyhow::anyhow!("{AUTH_TOKEN_ENV_VAR} env var is required"))?;
     let client = Client::new();
-    let mut retry_interval =
-        tokio::time::interval(Duration::from_secs(config.retry_interval_seconds));
-    retry_interval.tick().await;
-    let mut heartbeat_interval =
-        tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
-    heartbeat_interval.tick().await;
+
+    retry_unnotified(&db, &client, &config, &auth_token).await;
+    send_heartbeat(&db, &client, &config, &auth_token).await;
+
+    let mut poll_interval =
+        tokio::time::interval(Duration::from_secs(config.poll_interval_seconds));
+    poll_interval.tick().await;
 
     loop {
         tokio::select! {
             Some(run_id) = rx.recv() => {
                 notify_run(&db, &client, &config, &auth_token, &run_id).await;
             }
-            _ = retry_interval.tick() => {
+            _ = poll_interval.tick() => {
                 retry_unnotified(&db, &client, &config, &auth_token).await;
-            }
-            _ = heartbeat_interval.tick() => {
                 send_heartbeat(&db, &client, &config, &auth_token).await;
             }
             _ = token.cancelled() => {
@@ -277,7 +275,7 @@ mod tests {
     fn make_config(bot_url: &str) -> BotNotifierConfig {
         BotNotifierConfig {
             bot_url: bot_url.to_string(),
-            retry_interval_seconds: 1800,
+            poll_interval_seconds: 1800,
         }
     }
 

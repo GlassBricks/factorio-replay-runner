@@ -23,11 +23,11 @@ fn default_lookback_days() -> u64 {
 #[serde(deny_unknown_fields)]
 pub struct BotNotifierConfig {
     pub bot_url: String,
-    #[serde(default = "default_retry_interval_seconds")]
-    pub retry_interval_seconds: u64,
+    #[serde(default = "default_notifier_poll_interval_seconds")]
+    pub poll_interval_seconds: u64,
 }
 
-fn default_retry_interval_seconds() -> u64 {
+fn default_notifier_poll_interval_seconds() -> u64 {
     1800
 }
 
