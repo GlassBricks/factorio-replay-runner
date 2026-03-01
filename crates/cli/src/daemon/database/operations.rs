@@ -145,13 +145,13 @@ impl Database {
             .await
     }
 
-    pub async fn mark_run_needs_review(&self, run_id: &str) -> Result<()> {
-        self.update_run_status(run_id, RunStatus::NeedsReview, None)
+    pub async fn mark_run_needs_review(&self, run_id: &str, message: Option<&str>) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::NeedsReview, message)
             .await
     }
 
-    pub async fn mark_run_failed(&self, run_id: &str) -> Result<()> {
-        self.update_run_status(run_id, RunStatus::Failed, None)
+    pub async fn mark_run_failed(&self, run_id: &str, message: Option<&str>) -> Result<()> {
+        self.update_run_status(run_id, RunStatus::Failed, message)
             .await
     }
 
@@ -491,9 +491,15 @@ impl Database {
             Ok(report) => {
                 self.clear_retry_fields(run_id).await?;
 
+                let message = if report.messages.is_empty() {
+                    None
+                } else {
+                    Some(report.messages.join("; "))
+                };
+
                 if report.win_condition_not_completed {
                     warn!("Run {} failed: win condition never met", run_id);
-                    self.mark_run_failed(run_id).await?;
+                    self.mark_run_failed(run_id, message.as_deref()).await?;
                     return Ok(());
                 }
 
@@ -503,11 +509,12 @@ impl Database {
                         info!("Run {} passed verification", run_id);
                     }
                     MsgLevel::Warn => {
-                        self.mark_run_needs_review(run_id).await?;
+                        self.mark_run_needs_review(run_id, message.as_deref())
+                            .await?;
                         warn!("Run {} passed with warnings (needs review)", run_id);
                     }
                     MsgLevel::Error => {
-                        self.mark_run_failed(run_id).await?;
+                        self.mark_run_failed(run_id, message.as_deref()).await?;
                         warn!("Run {} failed verification", run_id);
                     }
                 }

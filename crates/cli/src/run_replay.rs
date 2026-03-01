@@ -20,14 +20,15 @@ use tokio::time::{Instant, sleep};
 
 use crate::config::RunRules;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct ReplayReport {
     pub max_msg_level: MsgLevel,
     pub win_condition_not_completed: bool,
+    pub messages: Vec<String>,
 }
 
 impl ReplayReport {
-    pub fn to_exit_code(self) -> i32 {
+    pub fn to_exit_code(&self) -> i32 {
         match self.max_msg_level {
             MsgLevel::Info => 0,
             MsgLevel::Warn => 1,
@@ -97,18 +98,17 @@ async fn run_and_log_replay(
 ) -> Result<ReplayReport, FactorioError> {
     info!("Starting replay. Log file at {}", log_path.display());
     let mut process = instance.spawn_replay(installed_save_path)?;
-    let (max_msg_level, exited_via_script) = record_output(&mut process, log_path).await?;
+    let output = record_output(&mut process, log_path).await?;
 
     process.terminate();
     let exit_status = match tokio::time::timeout(Duration::from_secs(5), process.wait()).await {
         Ok(result) => result?,
         Err(_) => {
-            // Timeout occurred, force kill
             process.kill();
             process.wait().await?
         }
     };
-    if !exit_status.success() && !exited_via_script {
+    if !exit_status.success() && !output.exited_via_script {
         return Err(FactorioError::ProcessExitedUnsuccessfully {
             exit_code: exit_status.code(),
         });
@@ -117,19 +117,20 @@ async fn run_and_log_replay(
     copy_factorio_log(instance, log_path)?;
 
     let win_condition_not_completed =
-        rules.replay_scripts.win_on_scenario_finished && !exited_via_script;
+        rules.replay_scripts.win_on_scenario_finished && !output.exited_via_script;
 
+    let mut messages = output.messages;
     if win_condition_not_completed {
+        let msg = "win_on_scenario_finished enabled but scenario never completed";
+        messages.push(msg.to_string());
         let mut log_file = File::options().append(true).open(log_path)?;
-        writeln!(
-            log_file,
-            "VERIFICATION FAILED: win_on_scenario_finished enabled but scenario never completed"
-        )?;
+        writeln!(log_file, "VERIFICATION FAILED: {msg}")?;
     }
 
     Ok(ReplayReport {
-        max_msg_level,
+        max_msg_level: output.max_level,
         win_condition_not_completed,
+        messages,
     })
 }
 
@@ -148,14 +149,21 @@ fn copy_factorio_log(instance: &FactorioInstance, log_path: &Path) -> Result<(),
 }
 
 /// returns when stdout closes.
+struct RecordOutputResult {
+    max_level: MsgLevel,
+    exited_via_script: bool,
+    messages: Vec<String>,
+}
+
 async fn record_output(
     process: &mut FactorioProcess,
     log_path: &Path,
-) -> Result<(MsgLevel, bool), FactorioError> {
+) -> Result<RecordOutputResult, FactorioError> {
     let mut log_file = File::create(log_path)?;
     let mut stream = msg_stream(process);
 
     let mut max_level = MsgLevel::Info;
+    let mut messages = Vec::new();
     let timeout_duration = Duration::from_secs(60);
     let mut last_message_time = Instant::now();
     let mut exited_successfully = false;
@@ -172,6 +180,9 @@ async fn record_output(
                     Some(StreamItem::Message(msg)) => {
                         writeln!(log_file, "{}", msg)?;
                         max_level = max_level.max(msg.level);
+                        if msg.level >= MsgLevel::Warn {
+                            messages.push(msg.message.clone());
+                        }
                         last_message_time = Instant::now();
                     }
                     Some(StreamItem::Exit(exit)) => {
@@ -196,7 +207,11 @@ async fn record_output(
         info!("Replay finished");
     }
 
-    Ok((max_level, exited_successfully))
+    Ok(RecordOutputResult {
+        max_level,
+        exited_via_script: exited_successfully,
+        messages,
+    })
 }
 
 enum StreamItem {
