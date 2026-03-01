@@ -11,8 +11,12 @@ use crate::daemon::retry::RetryConfig;
 pub struct PollingConfig {
     #[serde(default = "default_poll_interval_seconds")]
     pub poll_interval_seconds: u64,
-    #[serde(default)]
-    pub cutoff_date: String,
+    #[serde(default = "default_lookback_days")]
+    pub lookback_days: u64,
+}
+
+fn default_lookback_days() -> u64 {
+    30
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

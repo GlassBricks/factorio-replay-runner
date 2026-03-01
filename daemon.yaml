@@ -1,3 +1,3 @@
 polling:
   poll_interval_seconds: 900
-  cutoff_date: "2025-08-22T00:00:00Z"
+  lookback_days: 30

@@ -53,7 +53,11 @@ pub async fn poll_speedrun_com(
     config: &PollingConfig,
     work_notify: &Notify,
 ) -> Result<()> {
-    let cutoff_date = DateTime::parse_from_rfc3339(&config.cutoff_date)?.with_timezone(&Utc);
+    let cutoff_date = ctx
+        .db
+        .get_earliest_submitted_date()
+        .await?
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::days(config.lookback_days as i64));
 
     for (game_id, game_config) in &ctx.src_rules.games {
         for category_id in game_config.categories.keys() {
@@ -197,7 +201,7 @@ mod tests {
         let ctx = create_test_ctx().await;
         let config = PollingConfig {
             poll_interval_seconds: 3600,
-            cutoff_date: "2024-01-01T00:00:00Z".to_string(),
+            lookback_days: 30,
         };
         let work_notify = Notify::new();
 

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT MIN(submitted_date) as \"earliest: chrono::DateTime<Utc>\"\n            FROM runs\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "earliest: chrono::DateTime<Utc>",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "817835206061195f565a630a0edf8c6fcce43be02f6caa5670ce367a4ca9678a"
+}

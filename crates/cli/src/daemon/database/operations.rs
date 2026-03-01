@@ -468,6 +468,19 @@ impl Database {
         .map_err(Into::into)
     }
 
+    pub async fn get_earliest_submitted_date(&self) -> Result<Option<DateTime<Utc>>> {
+        let result = sqlx::query!(
+            r#"
+            SELECT MIN(submitted_date) as "earliest: chrono::DateTime<Utc>"
+            FROM runs
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(result.earliest)
+    }
+
     pub async fn get_latest_submitted_date(
         &self,
         game_id: &str,
@@ -775,6 +788,43 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(other_category, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_earliest_submitted_date() {
+        let db = Database::in_memory().await.unwrap();
+
+        let earliest = db.get_earliest_submitted_date().await.unwrap();
+        assert_eq!(earliest, None);
+
+        db.insert_run(NewRun::new(
+            "run1",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-03T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run2",
+            "game_id_2",
+            "cat_id_2",
+            "2024-01-01T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+        db.insert_run(NewRun::new(
+            "run3",
+            "game_id_1",
+            "cat_id_1",
+            "2024-01-05T00:00:00Z".parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let earliest = db.get_earliest_submitted_date().await.unwrap().unwrap();
+        let expected: DateTime<Utc> = "2024-01-01T00:00:00Z".parse().unwrap();
+        assert_eq!(earliest, expected);
     }
 
     #[tokio::test]
