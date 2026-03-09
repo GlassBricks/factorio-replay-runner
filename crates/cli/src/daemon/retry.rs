@@ -17,19 +17,19 @@ pub struct RetryConfig {
 }
 
 fn default_max_attempts() -> u32 {
-    8
+    10
 }
 
 fn default_initial_backoff_secs() -> u64 {
-    60
+    600
 }
 
 fn default_max_backoff_secs() -> u64 {
-    3600
+    86400
 }
 
 fn default_backoff_multiplier() -> f64 {
-    2.0
+    3.0
 }
 
 impl Default for RetryConfig {
@@ -102,10 +102,10 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = RetryConfig::default();
-        assert_eq!(config.max_attempts, 8);
-        assert_eq!(config.initial_backoff().as_secs(), 60);
-        assert_eq!(config.max_backoff().as_secs(), 3600);
-        assert_eq!(config.backoff_multiplier, 2.0);
+        assert_eq!(config.max_attempts, 10);
+        assert_eq!(config.initial_backoff().as_secs(), 600);
+        assert_eq!(config.max_backoff().as_secs(), 86400);
+        assert_eq!(config.backoff_multiplier, 3.0);
     }
 
     #[test]
@@ -118,13 +118,13 @@ mod tests {
     #[test]
     fn test_max_attempts_exceeded() {
         let config = RetryConfig::default();
-        let result = calculate_next_retry(6, &ErrorClass::Retryable, &config);
+        let result = calculate_next_retry(8, &ErrorClass::Retryable, &config);
         assert!(result.is_some());
 
-        let result = calculate_next_retry(7, &ErrorClass::Retryable, &config);
+        let result = calculate_next_retry(9, &ErrorClass::Retryable, &config);
         assert_eq!(result, None);
 
-        let result = calculate_next_retry(8, &ErrorClass::Retryable, &config);
+        let result = calculate_next_retry(10, &ErrorClass::Retryable, &config);
         assert_eq!(result, None);
     }
 
@@ -135,15 +135,15 @@ mod tests {
 
         let result = calculate_next_retry(0, &ErrorClass::Retryable, &config).unwrap();
         let delay = (result - now).num_seconds();
-        assert!((59..=61).contains(&delay));
+        assert!((599..=601).contains(&delay)); // 10 min
 
         let result = calculate_next_retry(1, &ErrorClass::Retryable, &config).unwrap();
         let delay = (result - now).num_seconds();
-        assert!((119..=121).contains(&delay));
+        assert!((1799..=1801).contains(&delay)); // 30 min
 
         let result = calculate_next_retry(2, &ErrorClass::Retryable, &config).unwrap();
         let delay = (result - now).num_seconds();
-        assert!((239..=241).contains(&delay));
+        assert!((5399..=5401).contains(&delay)); // 90 min
     }
 
     #[test]
@@ -151,9 +151,10 @@ mod tests {
         let config = RetryConfig::default();
         let now = Utc::now();
 
-        let result = calculate_next_retry(6, &ErrorClass::Retryable, &config).unwrap();
+        // 600 * 3^5 = 145800, capped to 86400
+        let result = calculate_next_retry(5, &ErrorClass::Retryable, &config).unwrap();
         let delay = (result - now).num_seconds();
-        assert!((3599..=3601).contains(&delay));
+        assert!((86399..=86401).contains(&delay));
     }
 
     #[test]
@@ -176,6 +177,21 @@ mod tests {
     }
 
     #[test]
+    fn test_rate_limited_with_retry_after_ignores_max_attempts() {
+        let config = RetryConfig::default();
+        let retry_after = Duration::from_secs(300);
+
+        let result = calculate_next_retry(
+            100,
+            &ErrorClass::RateLimited {
+                retry_after: Some(retry_after),
+            },
+            &config,
+        );
+        assert!(result.is_some());
+    }
+
+    #[test]
     fn test_rate_limited_without_retry_after_uses_exponential_backoff() {
         let config = RetryConfig::default();
         let now = Utc::now();
@@ -185,7 +201,7 @@ mod tests {
                 .unwrap();
 
         let delay = (result - now).num_seconds();
-        assert!((59..=61).contains(&delay));
+        assert!((599..=601).contains(&delay));
     }
 
     #[test]
@@ -193,12 +209,12 @@ mod tests {
         let config = RetryConfig::default();
 
         let result =
-            calculate_next_retry(6, &ErrorClass::RateLimited { retry_after: None }, &config);
+            calculate_next_retry(8, &ErrorClass::RateLimited { retry_after: None }, &config);
 
         assert!(result.is_some());
 
         let result =
-            calculate_next_retry(7, &ErrorClass::RateLimited { retry_after: None }, &config);
+            calculate_next_retry(9, &ErrorClass::RateLimited { retry_after: None }, &config);
 
         assert_eq!(result, None);
     }

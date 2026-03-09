@@ -34,7 +34,7 @@ impl From<DownloadError> for RunProcessingError {
         let class = match &e {
             DownloadError::NoLinkFound => ErrorClass::Final,
             DownloadError::SecurityViolation(_) => ErrorClass::Final,
-            DownloadError::FileNotAccessible(_) => ErrorClass::Final,
+            DownloadError::FileNotAccessible(_) => ErrorClass::Retryable,
             DownloadError::ServiceError(_) => ErrorClass::Retryable,
             &DownloadError::RateLimited { retry_after, .. } => {
                 ErrorClass::RateLimited { retry_after }

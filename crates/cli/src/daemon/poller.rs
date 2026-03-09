@@ -193,6 +193,7 @@ mod tests {
             output_dir: PathBuf::from("./daemon_runs"),
             retry_config: RetryConfig::default(),
             bot_notifier: None,
+            allowed_domains: Vec::new(),
         }
     }
 
