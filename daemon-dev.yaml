@@ -4,3 +4,7 @@ polling:
 
 bot_notifier:
   bot_url: http://localhost:3001
+
+zip_downloader:
+  allowed_domains:
+    - thuejk.dk

@@ -3699,6 +3699,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "url",
  "zip",
 ]
 

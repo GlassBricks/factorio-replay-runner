@@ -259,6 +259,7 @@ async fn run_src(
         expected_mods,
         install_dir,
         output_dir,
+        Vec::new(),
     )
     .await;
 
@@ -295,6 +296,7 @@ async fn run_src_once(
         output_dir: output_dir.to_path_buf(),
         retry_config: daemon_config.retry.clone(),
         bot_notifier: None,
+        allowed_domains: daemon_config.zip_downloader.allowed_domains.clone(),
     };
 
     info!("Polling speedrun.com for new runs");

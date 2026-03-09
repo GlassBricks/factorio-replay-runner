@@ -3,4 +3,8 @@ polling:
   lookback_days: 30
 
 bot_notifier:
-  bot_url: http://154.43.62.60:9980
+  bot_url: http://85.215.209.154:9980
+
+zip_downloader:
+  allowed_domains:
+    - thuejk.dk

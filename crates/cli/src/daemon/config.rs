@@ -31,6 +31,13 @@ fn default_notifier_poll_interval_seconds() -> u64 {
     1800
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ZipDownloaderConfig {
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
@@ -48,6 +55,8 @@ pub struct DaemonConfig {
     pub retry: RetryConfig,
     #[serde(default)]
     pub bot_notifier: Option<BotNotifierConfig>,
+    #[serde(default)]
+    pub zip_downloader: ZipDownloaderConfig,
 }
 
 fn default_game_rules_file() -> PathBuf {

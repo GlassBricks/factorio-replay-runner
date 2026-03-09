@@ -15,6 +15,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 zip = { workspace = true }
 serde = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

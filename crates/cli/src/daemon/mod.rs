@@ -68,6 +68,7 @@ pub async fn run_daemon(
         output_dir: config.output_dir,
         retry_config: config.retry,
         bot_notifier: bot_notifier_handle,
+        allowed_domains: config.zip_downloader.allowed_domains,
     };
 
     let poller = poll_speedrun_com_loop(

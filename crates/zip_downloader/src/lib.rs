@@ -95,6 +95,11 @@ impl FileDownloaderBuilder {
         self
     }
 
+    pub fn add_service_dyn(mut self, service: impl FileServiceDyn + 'static) -> Self {
+        self.services.push(Box::new(service));
+        self
+    }
+
     pub fn build(self) -> FileDownloader {
         assert!(!self.services.is_empty(), "No services configured");
         FileDownloader {

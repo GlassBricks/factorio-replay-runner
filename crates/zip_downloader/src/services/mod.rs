@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub mod dropbox;
 pub mod gdrive;
+pub mod http;
 pub mod speedrun;
 
 use crate::DownloadError;

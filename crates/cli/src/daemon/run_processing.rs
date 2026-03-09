@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use zip_downloader::FileDownloader;
 use zip_downloader::services::dropbox::DropboxService;
 use zip_downloader::services::gdrive::GoogleDriveService;
+use zip_downloader::services::http::HttpService;
 use zip_downloader::services::speedrun::SpeedrunService;
 
 use crate::config::RunRules;
@@ -32,6 +33,7 @@ pub struct RunProcessingContext {
     pub output_dir: PathBuf,
     pub retry_config: RetryConfig,
     pub bot_notifier: Option<BotNotifierHandle>,
+    pub allowed_domains: Vec<String>,
 }
 
 pub struct RunProcessor<'a> {
@@ -40,14 +42,20 @@ pub struct RunProcessor<'a> {
 }
 
 impl<'a> RunProcessor<'a> {
-    pub fn new(client: &'a SpeedrunClient) -> Result<Self> {
-        let downloader = FileDownloader::builder()
+    pub fn new(client: &'a SpeedrunClient, allowed_domains: Vec<String>) -> Result<Self> {
+        let mut builder = FileDownloader::builder()
             .add_service(GoogleDriveService::new())
             .add_service(DropboxService::new())
-            .add_service(SpeedrunService::new())
-            .build();
+            .add_service(SpeedrunService::new());
 
-        Ok(Self { downloader, client })
+        if !allowed_domains.is_empty() {
+            builder = builder.add_service_dyn(HttpService::new(allowed_domains));
+        }
+
+        Ok(Self {
+            downloader: builder.build(),
+            client,
+        })
     }
 
     async fn fetch_run_description(&self, run_id: &str) -> Result<String, ApiError> {
@@ -98,12 +106,13 @@ pub async fn download_and_run_replay(
     expected_mods: &ExpectedMods,
     install_dir: &Path,
     output_dir: &Path,
+    allowed_domains: Vec<String>,
 ) -> Result<ReplayReport, RunProcessingError> {
     let working_dir = output_dir.join(run_id);
     std::fs::create_dir_all(&working_dir)
         .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
 
-    let mut processor = RunProcessor::new(client)
+    let mut processor = RunProcessor::new(client, allowed_domains)
         .map_err(|e| RunProcessingError::from_error(ErrorClass::Retryable, &e))?;
     let mut save_file = processor.download_run_save(run_id, &working_dir).await?;
 

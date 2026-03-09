@@ -132,6 +132,7 @@ async fn process_run(ctx: &RunProcessingContext, run: Run) -> Result<()> {
         expected_mods,
         &ctx.install_dir,
         &ctx.output_dir,
+        ctx.allowed_domains.clone(),
     )
     .await;
 
@@ -174,6 +175,7 @@ mod tests {
             output_dir: PathBuf::from("/tmp/test_output"),
             retry_config: RetryConfig::default(),
             bot_notifier: None,
+            allowed_domains: Vec::new(),
         }
     }
 
