@@ -81,10 +81,10 @@ pub async fn run_daemon(
 
     let (poller_result, processor_result) = tokio::join!(poller, processor);
 
-    if let Some((_, join_handle)) = bot_notifier {
-        if let Ok(Err(e)) = join_handle.await {
-            log::error!("Bot notifier exited with error: {:#}", e);
-        }
+    if let Some((_, join_handle)) = bot_notifier
+        && let Ok(Err(e)) = join_handle.await
+    {
+        log::error!("Bot notifier exited with error: {:#}", e);
     }
 
     poller_result.and(processor_result)?;
